@@ -1,0 +1,34 @@
+services:
+  borg-dashboard:
+    build: .
+    image: borg-dashboard:latest
+    container_name: borg-dashboard
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=Europe/Moscow
+      - BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK=yes
+      - BORG_RELOCATED_REPO_ACCESS_IS_OK=yes
+      - BORG_CACHE_DIR=/tmp/borg_cache
+      # Опционально: можно переопределить пути к репозиториям и логам
+      # - BORG_REPO_1_NAME=Docker & Контейнеры
+      # - BORG_REPO_1_PATH=/repos/borg_backup
+      # - BORG_REPO_1_HOST_PATH=/srv/dev-disk-by-uuid-xxx/borg_backup
+      # - BORG_REPO_2_NAME=Immich Фото & База
+      # - BORG_REPO_2_PATH=/repos/backups/immich-borg
+      # - BORG_REPO_2_HOST_PATH=/srv/dev-disk-by-uuid-xxx/backups/immich-borg
+    volumes:
+      # Путь к локальным репозиториям Borg на хосте (настраивается через .env)
+      # (Borg требует право на запись для временных lock-файлов при чтении)
+      - ${BORG_REPOS_HOST_PATH:-/srv/dev-disk-by-uuid-YOUR-DISK-UUID}:/repos
+      # Каталог с логами бэкапов (read-only)
+      - /volume1/logs:/logs:ro
+      # Руководство по восстановлению (read-only, опционально)
+      - /volume1/script/ИНСТРУКЦИЯ_ПО_ВОССТАНОВЛЕНИЮ.md:/app/docs/RECOVERY.md:ro
+      # Сохранение кэша метаданных между перезапусками
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8099/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

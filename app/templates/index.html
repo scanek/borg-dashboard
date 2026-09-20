@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BorgBackup • Аналитика и Мониторинг</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2310b981'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9v-2h2v2zm0-4H9V7h2v5zm4 4h-2v-2h2v2zm0-4h-2V7h2v5z'/></svg>">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- ApexCharts -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  <!-- Marked.js for Markdown Rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+    }
+    .card-panel {
+      transition: all 0.2s ease-in-out;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-100 dark:bg-[#0b0f19] text-slate-800 dark:text-slate-100 transition-colors duration-200 custom-scrollbar">
+
+  <!-- TOP NAVBAR -->
+  <header class="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800/80 backdrop-blur px-4 lg:px-8 py-3.5 shadow-sm dark:shadow-none">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- Brand & Server Info -->
+      <div class="flex items-center gap-3.5">
+        <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 text-xl shadow-inner">
+          <i class="fa-solid fa-shield-halved"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-lg text-slate-900 dark:text-white tracking-tight">BorgBackup Analytics</h1>
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-ping"></span>
+              Активен
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <span><i class="fa-solid fa-server mr-1"></i>хост: <strong id="serverHostDisplay">localhost</strong></span>
+            <span>•</span>
+            <span>Контур 3-2-1</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Actions / Nav Links -->
+      <div class="flex items-center gap-2.5">
+        <!-- Theme Toggle Button -->
+        <button id="themeToggleBtn" onclick="toggleTheme()" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+          <i id="themeIcon" class="fa-solid fa-moon text-indigo-600 dark:text-amber-400"></i>
+          <span id="themeText">Тёмная тема</span>
+        </button>
+
+        <button id="refreshBtn" onclick="triggerRefresh()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+          <i id="refreshIcon" class="fa-solid fa-arrows-rotate"></i>
+          <span>Обновить</span>
+        </button>
+
+        <button onclick="openGuideModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-600/20 dark:hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30 transition shadow-sm">
+          <i class="fa-solid fa-book-medical"></i>
+          <span>Инструкция DR</span>
+        </button>
+
+        <a id="linkOliveTin" href=":1337" target="_blank" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+          <i class="fa-solid fa-terminal text-amber-500"></i>
+          <span>OliveTin</span>
+        </a>
+
+        <a id="linkUptimeKuma" href=":3002" target="_blank" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+          <i class="fa-solid fa-heart-pulse text-rose-500"></i>
+          <span>Uptime Kuma</span>
+        </a>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl w-full mx-auto px-4 lg:px-8 py-6 space-y-6 flex-1">
+
+    <!-- OVERVIEW CARDS (KPIs) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      
+      <!-- Card 1: Protected Raw Data -->
+      <div class="bg-white dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden card-panel">
+        <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider">Всего под защитой</span>
+          <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-database"></i>
+          </div>
+        </div>
+        <div class="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight" id="kpiRawData">--</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1.5">
+          <i class="fa-solid fa-folder-open text-blue-500"></i>
+          <span>Исходный объем файлов и баз</span>
+        </div>
+      </div>
+
+      <!-- Card 2: Disk Used -->
+      <div class="bg-white dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden card-panel">
+        <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider">Занято на диске</span>
+          <div class="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-hard-drive"></i>
+          </div>
+        </div>
+        <div class="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 tracking-tight" id="kpiDiskUsed">--</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1.5">
+          <i class="fa-solid fa-circle-check text-emerald-500"></i>
+          <span>После сжатия и дедупликации</span>
+        </div>
+      </div>
+
+      <!-- Card 3: Storage Savings & Ratio -->
+      <div class="bg-white dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden card-panel">
+        <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider">Экономия места</span>
+          <div class="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-bolt"></i>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <div class="text-3xl font-extrabold text-purple-600 dark:text-purple-400 tracking-tight" id="kpiRatio">--</div>
+          <span class="text-xs font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30" id="kpiSavings">--</span>
+        </div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1.5">
+          <i class="fa-solid fa-compress text-purple-500"></i>
+          <span id="kpiSavedGb">Сэкономлено ~ --</span>
+        </div>
+      </div>
+
+      <!-- Card 4: Archives Count -->
+      <div class="bg-white dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden card-panel">
+        <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider">Всего архивов</span>
+          <div class="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+          </div>
+        </div>
+        <div class="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight" id="kpiArchives">--</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1.5">
+          <i class="fa-solid fa-calendar-check text-amber-500"></i>
+          <span id="kpiArchivesSub">2 репозитория на /dev/sde1</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 3-2-1 BACKUP HEALTH STATUS STRIP -->
+    <div class="bg-white dark:bg-[#172033] p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
+          <i class="fa-solid fa-shield-virus text-emerald-500"></i>
+          Статус контура резервного копирования (3-2-1)
+        </h2>
+        <span class="text-xs text-slate-400 dark:text-slate-500" id="lastCollectedTime">Сбор данных: --</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        
+        <!-- Health: Integrity Check -->
+        <div class="bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 flex items-start gap-3">
+          <div id="badgeIntegrityIcon" class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 flex items-center justify-center text-base shrink-0 mt-0.5">
+            <i class="fa-solid fa-circle-check"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-xs font-bold text-slate-900 dark:text-white truncate">Проверка целостности</span>
+              <span id="badgeIntegrityStatus" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">OK</span>
+            </div>
+            <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 truncate" id="badgeIntegrityDetails">Ошибок не обнаружено</p>
+            <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1"><i class="fa-regular fa-clock mr-1"></i><span id="badgeIntegrityTime">--</span></p>
+          </div>
+        </div>
+
+        <!-- Health: Cloud Sync -->
+        <div class="bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 flex items-start gap-3">
+          <div id="badgeCloudIcon" class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 flex items-center justify-center text-base shrink-0 mt-0.5">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-xs font-bold text-slate-900 dark:text-white truncate">Яндекс.Диск (Облако)</span>
+              <span id="badgeCloudStatus" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">OK</span>
+            </div>
+            <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 truncate" id="badgeCloudDetails">Синхронизировано (8 МБ/с)</p>
+            <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1"><i class="fa-regular fa-clock mr-1"></i><span id="badgeCloudTime">--</span></p>
+          </div>
+        </div>
+
+        <!-- Health: Pre Backup DBs -->
+        <div class="bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 flex items-start gap-3">
+          <div id="badgePreIcon" class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 flex items-center justify-center text-base shrink-0 mt-0.5">
+            <i class="fa-solid fa-file-zipper"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-xs font-bold text-slate-900 dark:text-white truncate">Пре-дампы баз</span>
+              <span id="badgePreStatus" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">OK</span>
+            </div>
+            <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 truncate" id="badgePreDetails">Paperless, Vault, Memos</p>
+            <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1"><i class="fa-regular fa-clock mr-1"></i><span id="badgePreTime">--</span></p>
+          </div>
+        </div>
+
+        <!-- Health: Cold Rsync Snapshot -->
+        <div class="bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 flex items-start gap-3">
+          <div id="badgeRsyncIcon" class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 flex items-center justify-center text-base shrink-0 mt-0.5">
+            <i class="fa-solid fa-snowflake"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-xs font-bold text-slate-900 dark:text-white truncate">Холодный rsync (sdf1)</span>
+              <span id="badgeRsyncStatus" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">OK</span>
+            </div>
+            <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 truncate" id="badgeRsyncDetails">Ротация: 2 копии сохранены</p>
+            <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1"><i class="fa-regular fa-clock mr-1"></i><span id="badgeRsyncTime">--</span></p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- REPOSITORIES CARDS (SIDE BY SIDE) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" id="reposCardsContainer">
+      <!-- Repositories populated via JS -->
+    </div>
+
+    <!-- ANALYTICS & CHARTS SECTION -->
+    <div class="bg-white dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm card-panel">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <div>
+          <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <i class="fa-solid fa-chart-line text-emerald-500"></i>
+            Графическая аналитика срезов
+          </h2>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Динамика прироста новых данных и длительность выполнения ночных бэкапов</p>
+        </div>
+
+        <!-- Repo Filter Tabs -->
+        <div class="inline-flex p-1 bg-slate-100 dark:bg-surface-900 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold">
+          <button onclick="switchChartRepo('all')" id="tabAll" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm transition">Все репозитории</button>
+          <button onclick="switchChartRepo('docker')" id="tabDocker" class="px-3 py-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">Docker</button>
+          <button onclick="switchChartRepo('immich')" id="tabImmich" class="px-3 py-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition">Immich</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Chart 1: Deduplicated Delta per Backup -->
+        <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-700 dark:text-slate-300">Прирост новых данных (Инкремент дедупликации)</span>
+            <span class="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono font-bold">МБ / ГБ</span>
+          </div>
+          <div id="chartDelta" class="min-h-[260px]"></div>
+        </div>
+
+        <!-- Chart 2: Duration per Backup -->
+        <div class="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-700 dark:text-slate-300">Длительность резервного копирования</span>
+            <span class="text-[11px] text-blue-600 dark:text-blue-400 font-mono font-bold">секунды</span>
+          </div>
+          <div id="chartDuration" class="min-h-[260px]"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ARCHIVES EXPLORER TABLE -->
+    <div class="bg-white dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm card-panel">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <div>
+          <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <i class="fa-solid fa-list-check text-emerald-500"></i>
+            Журнал архивов Borg
+          </h2>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Полный перечень всех срезов с метаданными и командами быстрого восстановления</p>
+        </div>
+
+        <!-- Search & Filter Bar -->
+        <div class="flex items-center gap-3">
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+            <input type="text" id="archiveSearch" oninput="filterArchivesTable()" placeholder="Поиск по имени или дате..." class="bg-slate-50 dark:bg-surface-900 text-xs text-slate-900 dark:text-white pl-8 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500/50 w-52 sm:w-64">
+          </div>
+
+          <select id="archiveRepoSelect" onchange="filterArchivesTable()" class="bg-slate-50 dark:bg-surface-900 text-xs text-slate-900 dark:text-white px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500/50">
+            <option value="all">Все репозитории</option>
+            <option value="docker">Docker</option>
+            <option value="immich">Immich</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-100 dark:bg-surface-900/90 text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
+            <tr>
+              <th class="py-3 px-4">Репозиторий</th>
+              <th class="py-3 px-4">Имя архива</th>
+              <th class="py-3 px-4">Дата и время</th>
+              <th class="py-3 px-4">Длительность</th>
+              <th class="py-3 px-4">Исходный размер</th>
+              <th class="py-3 px-4">Новых данных (Dedup)</th>
+              <th class="py-3 px-4">Файлов</th>
+              <th class="py-3 px-4 text-right">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="archivesTableBody" class="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
+            <tr>
+              <td colspan="8" class="text-center py-8 text-slate-500 font-sans">
+                <i class="fa-solid fa-spinner fa-spin mr-2"></i> Загрузка архивов...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-slate-200 dark:border-slate-800/80 bg-white/80 dark:bg-surface-900/60 py-4 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span>BorgBackup v1.4.0</span>
+        <span>•</span>
+        <span>OpenMediaVault</span>
+        <span>•</span>
+        <span>Яндекс.Диск (rclone)</span>
+      </div>
+      <div>
+        <span>Хранилище: <code class="text-slate-600 dark:text-slate-400">Borg Repositories (/repos)</code></span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MODAL: RESTORE COMMANDS -->
+  <div id="restoreModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-2xl w-full rounded-2xl p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-terminal"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-slate-900 dark:text-white text-sm" id="modalArchiveTitle">Команды восстановления архива</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400" id="modalArchiveSub">Готовые CLI команды для OMV</p>
+          </div>
+        </div>
+        <button onclick="closeRestoreModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <!-- Command 1: Mount Archive -->
+        <div>
+          <label class="font-semibold text-slate-700 dark:text-slate-300 block mb-1">1. Смонтировать как папку (FUSE) для просмотра и выгрузки файлов:</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between">
+            <span class="truncate mr-2 select-all" id="cmdMount">--</span>
+            <button onclick="copyCommand('cmdMount')" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm">
+              <i class="fa-regular fa-copy mr-1"></i>Копия
+            </button>
+          </div>
+        </div>
+
+        <!-- Command 2: Extract single file or dir -->
+        <div>
+          <label class="font-semibold text-slate-700 dark:text-slate-300 block mb-1">2. Извлечь конкретный файл/каталог из этого среза:</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between">
+            <span class="truncate mr-2 select-all" id="cmdExtract">--</span>
+            <button onclick="copyCommand('cmdExtract')" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm">
+              <i class="fa-regular fa-copy mr-1"></i>Копия
+            </button>
+          </div>
+        </div>
+
+        <!-- Command 3: Break Lock -->
+        <div>
+          <label class="font-semibold text-slate-700 dark:text-slate-300 block mb-1">3. Снять зависшую блокировку (если процесс был прерван):</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between">
+            <span class="truncate mr-2 select-all" id="cmdBreakLock">--</span>
+            <button onclick="copyCommand('cmdBreakLock')" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm">
+              <i class="fa-regular fa-copy mr-1"></i>Копия
+            </button>
+          </div>
+        </div>
+
+        <!-- Command 4: Check archive -->
+        <div>
+          <label class="font-semibold text-slate-700 dark:text-slate-300 block mb-1">4. Проверить целостность только этого среза:</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between">
+            <span class="truncate mr-2 select-all" id="cmdCheck">--</span>
+            <button onclick="copyCommand('cmdCheck')" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm">
+              <i class="fa-regular fa-copy mr-1"></i>Копия
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button onclick="closeRestoreModal()" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: RECOVERY GUIDE -->
+  <div id="guideModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-4xl w-full max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 p-4 shrink-0 bg-slate-50 dark:bg-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-book-medical"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-slate-900 dark:text-white text-sm">Руководство по аварийному восстановлению (DR)</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Источник: /volume1/script/ИНСТРУКЦИЯ_ПО_ВОССТАНОВЛЕНИЮ.md</p>
+          </div>
+        </div>
+        <button onclick="closeGuideModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div id="guideContent" class="p-6 overflow-y-auto custom-scrollbar prose dark:prose-invert prose-emerald max-w-none text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+        <div class="text-center py-12 text-slate-500">
+          <i class="fa-solid fa-spinner fa-spin mr-2"></i> Загрузка инструкции...
+        </div>
+      </div>
+
+      <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex justify-end shrink-0">
+        <button onclick="closeGuideModal()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold transition">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APP LOGIC -->
+  <script>
+    let globalData = null;
+    let chartDelta = null;
+    let chartDuration = null;
+    let currentChartFilter = 'all';
+
+    // Theme Switcher Logic (Defaults to light as requested!)
+    function initTheme() {
+      const saved = localStorage.getItem('theme') || 'light';
+      applyTheme(saved);
+    }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.contains('dark');
+      applyTheme(isDark ? 'light' : 'dark');
+    }
+
+    function applyTheme(theme) {
+      const html = document.documentElement;
+      const icon = document.getElementById('themeIcon');
+      const text = document.getElementById('themeText');
+
+      if (theme === 'dark') {
+        html.classList.add('dark');
+        if (icon) icon.className = 'fa-solid fa-sun text-amber-400';
+        if (text) text.innerText = 'Светлая тема';
+      } else {
+        html.classList.remove('dark');
+        if (icon) icon.className = 'fa-solid fa-moon text-indigo-600';
+        if (text) text.innerText = 'Тёмная тема';
+      }
+      localStorage.setItem('theme', theme);
+
+      if (globalData) {
+        renderCharts(globalData.archives || [], currentChartFilter);
+      }
+    }
+
+    function formatBytes(bytes, decimals = 1) {
+      if (!bytes || bytes === 0) return '0 Б';
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ПБ'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '--';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    async function loadData() {
+      try {
+        const res = await fetch('/api/status');
+        if (!res.ok) throw new Error('Ошибка сети');
+        globalData = await res.json();
+        renderDashboard(globalData);
+      } catch (err) {
+        console.error('Ошибка загрузки данных:', err);
+      }
+    }
+
+    async function triggerRefresh() {
+      const icon = document.getElementById('refreshIcon');
+      icon.classList.add('fa-spin');
+      try {
+        await fetch('/api/refresh', { method: 'POST' });
+        setTimeout(async () => {
+          await loadData();
+          icon.classList.remove('fa-spin');
+        }, 2000);
+      } catch (err) {
+        console.error(err);
+        icon.classList.remove('fa-spin');
+      }
+    }
+
+    function renderDashboard(data) {
+      if (!data) return;
+
+      // 1. KPIs
+      const summary = data.summary || {};
+      document.getElementById('kpiRawData').innerText = formatBytes(summary.total_raw_bytes || 0, 2);
+      document.getElementById('kpiDiskUsed').innerText = formatBytes(summary.total_unique_csize_bytes || 0, 1);
+      document.getElementById('kpiRatio').innerText = (summary.overall_dedup_ratio || 1) + 'x';
+      
+      const percentSaved = summary.total_raw_bytes > 0 
+        ? Math.round(((summary.total_raw_bytes - summary.total_unique_csize_bytes) / summary.total_raw_bytes) * 100) 
+        : 0;
+      document.getElementById('kpiSavings').innerText = `-${percentSaved}%`;
+      document.getElementById('kpiSavedGb').innerText = `Сэкономлено ~ ${formatBytes(summary.saved_bytes || 0, 1)}`;
+      document.getElementById('kpiArchives').innerText = (summary.total_archives || 0) + ' срезов';
+      document.getElementById('lastCollectedTime').innerText = 'Сбор данных: ' + (summary.last_collected || '--');
+
+      // 2. Health Badges
+      const health = data.health || {};
+      updateHealthBadge('badgeIntegrity', health.integrity_check);
+      updateHealthBadge('badgeCloud', health.cloud_sync);
+      updateHealthBadge('badgePre', health.pre_backup);
+      updateHealthBadge('badgeRsync', health.rsync_cold);
+
+      // 3. Repositories Cards
+      renderReposCards(data.repos || []);
+
+      // 4. Charts
+      renderCharts(data.archives || [], currentChartFilter);
+
+      // 5. Table
+      renderArchivesTable(data.archives || []);
+    }
+
+    function updateHealthBadge(prefix, item) {
+      if (!item) return;
+      const statusEl = document.getElementById(prefix + 'Status');
+      const detailsEl = document.getElementById(prefix + 'Details');
+      const timeEl = document.getElementById(prefix + 'Time');
+      const iconEl = document.getElementById(prefix + 'Icon');
+
+      statusEl.innerText = item.status === 'SUCCESS' ? 'OK' : item.status;
+      if (item.status === 'SUCCESS') {
+        statusEl.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20';
+        iconEl.className = 'w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 flex items-center justify-center text-base shrink-0 mt-0.5';
+      } else if (item.status === 'ERROR') {
+        statusEl.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20';
+        iconEl.className = 'w-9 h-9 rounded-lg bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400 flex items-center justify-center text-base shrink-0 mt-0.5';
+      }
+      detailsEl.innerText = item.details || '--';
+      timeEl.innerText = item.timestamp || '--';
+    }
+
+    function renderReposCards(repos) {
+      const container = document.getElementById('reposCardsContainer');
+      container.innerHTML = '';
+
+      repos.forEach(repo => {
+        const rawSize = formatBytes(repo.total_size, 1);
+        const storedSize = formatBytes(repo.unique_csize, 1);
+        const latestTime = repo.latest_archive ? formatDate(repo.latest_archive.start) : '--';
+        const latestDuration = repo.latest_archive ? repo.latest_archive.duration + ' сек' : '--';
+
+        const card = document.createElement('div');
+        card.className = 'bg-white dark:bg-slate-800/60 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4 card-panel';
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-lg">
+                <i class="fa-solid fa-box-archive"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-slate-900 dark:text-white text-base">${repo.name}</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400">${repo.description}</p>
+              </div>
+            </div>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400"></span>
+              ${repo.archives_count} срезов
+            </span>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80">
+            <div>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400 block">Исходный объем</span>
+              <span class="text-sm font-bold text-slate-900 dark:text-white font-mono">${rawSize}</span>
+            </div>
+            <div>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400 block">Накопитель (диск)</span>
+              <span class="text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono">${storedSize}</span>
+            </div>
+            <div>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400 block">Коэфф. сжатия</span>
+              <span class="text-sm font-bold text-purple-600 dark:text-purple-400 font-mono">${repo.dedup_ratio}x</span>
+            </div>
+            <div>
+              <span class="text-[11px] text-slate-500 dark:text-slate-400 block">Дедупликация</span>
+              <span class="text-sm font-bold text-blue-600 dark:text-blue-400 font-mono">${repo.chunk_dedup_ratio}%</span>
+            </div>
+          </div>
+
+          <div class="text-xs text-slate-500 dark:text-slate-400 space-y-1.5 pt-1">
+            <div class="flex items-center justify-between">
+              <span><i class="fa-solid fa-folder-tree mr-1.5 text-slate-400"></i>Источник:</span>
+              <code class="text-slate-700 dark:text-slate-300 font-mono">${repo.source}</code>
+            </div>
+            <div class="flex items-center justify-between">
+              <span><i class="fa-regular fa-clock mr-1.5 text-slate-400"></i>Расписание:</span>
+              <span class="text-slate-700 dark:text-slate-300">${repo.schedule}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span><i class="fa-solid fa-clock-rotate-left mr-1.5 text-slate-400"></i>Последний бэкап:</span>
+              <span class="text-slate-800 dark:text-slate-200 font-mono font-semibold">${latestTime} (${latestDuration})</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span><i class="fa-solid fa-cubes mr-1.5 text-slate-400"></i>Чанки (уникальные / всего):</span>
+              <span class="text-slate-700 dark:text-slate-300 font-mono">${repo.total_unique_chunks.toLocaleString()} / ${repo.total_chunks.toLocaleString()}</span>
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function switchChartRepo(filter) {
+      currentChartFilter = filter;
+      const isDark = document.documentElement.classList.contains('dark');
+      ['tabAll', 'tabDocker', 'tabImmich'].forEach(id => {
+        document.getElementById(id).className = 'px-3 py-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition';
+      });
+      const activeClass = 'px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm transition';
+      if (filter === 'all') document.getElementById('tabAll').className = activeClass;
+      if (filter === 'docker') document.getElementById('tabDocker').className = activeClass;
+      if (filter === 'immich') document.getElementById('tabImmich').className = activeClass;
+
+      if (globalData) {
+        renderCharts(globalData.archives || [], currentChartFilter);
+      }
+    }
+
+    function renderCharts(archives, filter) {
+      let filtered = [...archives];
+      if (filter !== 'all') {
+        filtered = filtered.filter(a => a.repo_id === filter);
+      }
+
+      const isDark = document.documentElement.classList.contains('dark');
+      const textColor = isDark ? '#94a3b8' : '#64748b';
+      const gridColor = isDark ? '#334155' : '#e2e8f0';
+
+      // Sort chronological for chart (oldest to newest)
+      filtered.sort((a, b) => new Date(a.start) - new Date(b.start));
+
+      // Limit to last 20 for cleaner charts
+      filtered = filtered.slice(-20);
+
+      const categories = filtered.map(a => {
+        const d = new Date(a.start);
+        return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+      });
+
+      const deltaMb = filtered.map(a => Math.round((a.deduplicated_size || 0) / (1024 * 1024)));
+      const durations = filtered.map(a => a.duration || 0);
+
+      // Chart 1: Delta Size (Bar)
+      const optionsDelta = {
+        series: [{
+          name: 'Новых данных (Dedup)',
+          data: deltaMb
+        }],
+        chart: {
+          type: 'bar',
+          height: 260,
+          toolbar: { show: false },
+          background: 'transparent'
+        },
+        theme: { mode: isDark ? 'dark' : 'light' },
+        colors: ['#10b981'],
+        plotOptions: {
+          bar: {
+            borderRadius: 6,
+            columnWidth: '45%',
+            distributed: false
+          }
+        },
+        dataLabels: { enabled: false },
+        xaxis: {
+          categories: categories,
+          labels: { style: { colors: textColor, fontSize: '11px' } },
+          axisBorder: { show: false },
+          axisTicks: { show: false }
+        },
+        yaxis: {
+          labels: {
+            style: { colors: textColor, fontSize: '11px' },
+            formatter: (val) => val >= 1024 ? (val / 1024).toFixed(1) + ' ГБ' : val + ' МБ'
+          }
+        },
+        grid: { borderColor: gridColor },
+        tooltip: {
+          y: {
+            formatter: (val) => val >= 1024 ? (val / 1024).toFixed(2) + ' ГБ' : val + ' МБ'
+          }
+        }
+      };
+
+      if (chartDelta) chartDelta.destroy();
+      chartDelta = new ApexCharts(document.querySelector("#chartDelta"), optionsDelta);
+      chartDelta.render();
+
+      // Chart 2: Duration (Line)
+      const optionsDuration = {
+        series: [{
+          name: 'Длительность бэкапа',
+          data: durations
+        }],
+        chart: {
+          type: 'area',
+          height: 260,
+          toolbar: { show: false },
+          background: 'transparent'
+        },
+        theme: { mode: isDark ? 'dark' : 'light' },
+        colors: ['#0284c7'],
+        stroke: { curve: 'smooth', width: 2 },
+        fill: {
+          type: 'gradient',
+          gradient: {
+            shadeIntensity: 1,
+            opacityFrom: 0.45,
+            opacityTo: 0.05,
+            stops: [0, 95, 100]
+          }
+        },
+        dataLabels: { enabled: false },
+        xaxis: {
+          categories: categories,
+          labels: { style: { colors: textColor, fontSize: '11px' } },
+          axisBorder: { show: false },
+          axisTicks: { show: false }
+        },
+        yaxis: {
+          labels: {
+            style: { colors: textColor, fontSize: '11px' },
+            formatter: (val) => val + ' с'
+          }
+        },
+        grid: { borderColor: gridColor },
+        tooltip: {
+          y: { formatter: (val) => val + ' секунд' }
+        }
+      };
+
+      if (chartDuration) chartDuration.destroy();
+      chartDuration = new ApexCharts(document.querySelector("#chartDuration"), optionsDuration);
+      chartDuration.render();
+    }
+
+    function filterArchivesTable() {
+      if (!globalData) return;
+      const search = document.getElementById('archiveSearch').value.toLowerCase();
+      const repoFilter = document.getElementById('archiveRepoSelect').value;
+
+      let filtered = globalData.archives || [];
+
+      if (repoFilter !== 'all') {
+        filtered = filtered.filter(a => a.repo_id === repoFilter);
+      }
+
+      if (search) {
+        filtered = filtered.filter(a => 
+          (a.name && a.name.toLowerCase().includes(search)) ||
+          (a.start && a.start.toLowerCase().includes(search))
+        );
+      }
+
+      renderArchivesTable(filtered);
+    }
+
+    function renderArchivesTable(archives) {
+      const tbody = document.getElementById('archivesTableBody');
+      tbody.innerHTML = '';
+
+      if (archives.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-slate-500 font-sans">Архивы не найдены</td></tr>`;
+        return;
+      }
+
+      archives.forEach(arch => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/40 transition';
+
+        const repoBadge = arch.repo_id === 'docker'
+          ? '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-blue-100 text-blue-800 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">Docker</span>'
+          : '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Immich</span>';
+
+        const rawSize = formatBytes(arch.original_size || 0);
+        const compSize = formatBytes(arch.compressed_size || 0);
+        const dedupDelta = formatBytes(arch.deduplicated_size || 0);
+        const nfiles = (arch.nfiles || 0).toLocaleString();
+        const duration = (arch.duration || 0) + ' с';
+        const dateFormatted = formatDate(arch.start);
+
+        tr.innerHTML = `
+          <td class="py-3 px-4">${repoBadge}</td>
+          <td class="py-3 px-4 font-semibold text-slate-900 dark:text-slate-200">${arch.name}</td>
+          <td class="py-3 px-4 text-slate-600 dark:text-slate-400">${dateFormatted}</td>
+          <td class="py-3 px-4 text-slate-700 dark:text-slate-300">${duration}</td>
+          <td class="py-3 px-4 text-slate-700 dark:text-slate-300">${rawSize}</td>
+          <td class="py-3 px-4 text-emerald-600 dark:text-emerald-400 font-bold">${dedupDelta}</td>
+          <td class="py-3 px-4 text-slate-500 dark:text-slate-400">${nfiles}</td>
+          <td class="py-3 px-4 text-right">
+            <button onclick='openRestoreModal(${JSON.stringify(arch)})' class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-lg text-xs font-sans border border-slate-200 dark:border-slate-700 shadow-sm transition">
+              <i class="fa-solid fa-terminal mr-1 text-emerald-500"></i>Команды
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function openRestoreModal(arch) {
+      document.getElementById('modalArchiveTitle').innerText = arch.name;
+      document.getElementById('modalArchiveSub').innerText = `Репозиторий: ${arch.repo_name} • Срез от ${formatDate(arch.start)}`;
+
+      const hostPath = arch.host_path;
+      document.getElementById('cmdMount').innerText = `mkdir -p /mnt/borg && borg mount ${hostPath}::${arch.name} /mnt/borg`;
+      document.getElementById('cmdExtract').innerText = `borg extract ${hostPath}::${arch.name} path/to/file`;
+      document.getElementById('cmdBreakLock').innerText = `borg break-lock ${hostPath}`;
+      document.getElementById('cmdCheck').innerText = `borg check --prefix ${arch.name} ${hostPath}`;
+
+      const modal = document.getElementById('restoreModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeRestoreModal() {
+      const modal = document.getElementById('restoreModal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    function copyCommand(elementId) {
+      const text = document.getElementById(elementId).innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Команда скопирована в буфер обмена!');
+      });
+    }
+
+    async function openGuideModal() {
+      const modal = document.getElementById('guideModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      try {
+        const res = await fetch('/api/guide');
+        const data = await res.json();
+        const contentDiv = document.getElementById('guideContent');
+        if (window.marked) {
+          contentDiv.innerHTML = marked.parse(data.content || '');
+        } else {
+          contentDiv.innerText = data.content || '';
+        }
+      } catch (err) {
+        document.getElementById('guideContent').innerText = 'Ошибка загрузки руководства: ' + err;
+      }
+    }
+
+    function closeGuideModal() {
+      const modal = document.getElementById('guideModal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      const host = window.location.hostname || 'localhost';
+      const hostEl = document.getElementById('serverHostDisplay');
+      if (hostEl) hostEl.innerText = host;
+      const otLink = document.getElementById('linkOliveTin');
+      if (otLink) otLink.href = `http://${host}:1337`;
+      const ukLink = document.getElementById('linkUptimeKuma');
+      if (ukLink) ukLink.href = `http://${host}:3002`;
+
+      initTheme();
+      loadData();
+      // Auto-refresh every 60 seconds
+      setInterval(loadData, 60000);
+    });
+  </script>
+</body>
+</html>

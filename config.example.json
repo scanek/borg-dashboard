@@ -1,0 +1,20 @@
+[
+  {
+    "id": "docker",
+    "name": "Docker & Контейнеры",
+    "path": "/repos/borg_backup",
+    "host_path": "/srv/dev-disk-by-uuid-YOUR-DISK-UUID/borg_backup",
+    "source": "/volume1/docker",
+    "schedule": "Ежедневно в 01:00",
+    "description": "Контейнеры, базы данных, пре-дампы и конфигурации"
+  },
+  {
+    "id": "immich",
+    "name": "Immich Фото & База",
+    "path": "/repos/backups/immich-borg",
+    "host_path": "/srv/dev-disk-by-uuid-YOUR-DISK-UUID/backups/immich-borg",
+    "source": "/volume1/immich",
+    "schedule": "Ежедневно в 00:30",
+    "description": "Медиатека фотографий, видео и база PostgreSQL Immich"
+  }
+]
