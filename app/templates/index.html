@@ -394,47 +394,62 @@
         </button>
       </div>
 
-      <div class="space-y-3 text-xs">
+      <div class="space-y-3.5 text-xs max-h-[70vh] overflow-y-auto pr-1 custom-scrollbar">
         <!-- Command 1: Mount Archive -->
         <div>
-          <label class="font-semibold text-slate-700 dark:text-slate-300 block mb-1">1. Смонтировать как папку (FUSE) для просмотра и выгрузки файлов:</label>
-          <div class="relative bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between">
-            <span class="truncate mr-2 select-all" id="cmdMount">--</span>
-            <button onclick="copyCommand('cmdMount')" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm">
-              <i class="fa-regular fa-copy mr-1"></i>Копия
+          <label class="font-semibold text-slate-800 dark:text-slate-200 block mb-1">1. Смонтировать как папку (FUSE) для просмотра и копирования:</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between gap-2">
+            <span class="break-all select-all text-[11px] leading-relaxed" id="cmdMount">--</span>
+            <button onclick="copyCommand('cmdMount', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm transition flex items-center gap-1">
+              <i class="fa-regular fa-copy"></i><span>Копия</span>
             </button>
           </div>
+          <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Размонтировать после завершения: <code class="bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded text-slate-700 dark:text-slate-300">borg umount /mnt/borg</code></p>
         </div>
 
         <!-- Command 2: Extract single file or dir -->
         <div>
-          <label class="font-semibold text-slate-700 dark:text-slate-300 block mb-1">2. Извлечь конкретный файл/каталог из этого среза:</label>
-          <div class="relative bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between">
-            <span class="truncate mr-2 select-all" id="cmdExtract">--</span>
-            <button onclick="copyCommand('cmdExtract')" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm">
-              <i class="fa-regular fa-copy mr-1"></i>Копия
+          <label class="font-semibold text-slate-800 dark:text-slate-200 block mb-1">2. Извлечь конкретный файл/каталог из этого среза:</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between gap-2">
+            <span class="break-all select-all text-[11px] leading-relaxed" id="cmdExtract">--</span>
+            <button onclick="copyCommand('cmdExtract', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm transition flex items-center gap-1">
+              <i class="fa-regular fa-copy"></i><span>Копия</span>
             </button>
           </div>
+          <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Файлы будут извлечены в текущую директорию с сохранением путей.</p>
         </div>
 
-        <!-- Command 3: Break Lock -->
+        <!-- Command 3: Check specific archive (Fast) -->
         <div>
-          <label class="font-semibold text-slate-700 dark:text-slate-300 block mb-1">3. Снять зависшую блокировку (если процесс был прерван):</label>
-          <div class="relative bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between">
-            <span class="truncate mr-2 select-all" id="cmdBreakLock">--</span>
-            <button onclick="copyCommand('cmdBreakLock')" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm">
-              <i class="fa-regular fa-copy mr-1"></i>Копия
+          <label class="font-semibold text-slate-800 dark:text-slate-200 block mb-1">3. Быстрая проверка целостности только этого среза (секунды, с прогрессом):</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between gap-2">
+            <span class="break-all select-all text-[11px] leading-relaxed" id="cmdCheckFast">--</span>
+            <button onclick="copyCommand('cmdCheckFast', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm transition flex items-center gap-1">
+              <i class="fa-regular fa-copy"></i><span>Копия</span>
             </button>
           </div>
+          <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Флаг <code class="text-emerald-600 dark:text-emerald-400">--archives-only</code> проверяет только метаданные и блоки этого среза без долгого чтения всего диска.</p>
         </div>
 
-        <!-- Command 4: Check archive -->
+        <!-- Command 4: Check entire repo (Full) -->
         <div>
-          <label class="font-semibold text-slate-700 dark:text-slate-300 block mb-1">4. Проверить целостность только этого среза:</label>
-          <div class="relative bg-slate-100 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between">
-            <span class="truncate mr-2 select-all" id="cmdCheck">--</span>
-            <button onclick="copyCommand('cmdCheck')" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm">
-              <i class="fa-regular fa-copy mr-1"></i>Копия
+          <label class="font-semibold text-slate-800 dark:text-slate-200 block mb-1">4. Полная проверка структуры репозитория (сканирование всех блоков на диске):</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between gap-2">
+            <span class="break-all select-all text-[11px] leading-relaxed" id="cmdCheckFull">--</span>
+            <button onclick="copyCommand('cmdCheckFull', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm transition flex items-center gap-1">
+              <i class="fa-regular fa-copy"></i><span>Копия</span>
+            </button>
+          </div>
+          <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Флаг <code class="text-emerald-600 dark:text-emerald-400">--progress</code> выводит процент выполнения в реальном времени.</p>
+        </div>
+
+        <!-- Command 5: Break Lock -->
+        <div>
+          <label class="font-semibold text-slate-800 dark:text-slate-200 block mb-1">5. Снять зависшую блокировку (если процесс проверки/бэкапа был прерван):</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between gap-2">
+            <span class="break-all select-all text-[11px] leading-relaxed" id="cmdBreakLock">--</span>
+            <button onclick="copyCommand('cmdBreakLock', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm transition flex items-center gap-1">
+              <i class="fa-regular fa-copy"></i><span>Копия</span>
             </button>
           </div>
         </div>
@@ -890,9 +905,10 @@
 
       const hostPath = arch.host_path;
       document.getElementById('cmdMount').innerText = `mkdir -p /mnt/borg && borg mount ${hostPath}::${arch.name} /mnt/borg`;
-      document.getElementById('cmdExtract').innerText = `borg extract ${hostPath}::${arch.name} path/to/file`;
+      document.getElementById('cmdExtract').innerText = `borg extract -v --list ${hostPath}::${arch.name} [путь/к/файлу]`;
+      document.getElementById('cmdCheckFast').innerText = `borg check -v --progress --archives-only -a '${arch.name}' ${hostPath}`;
+      document.getElementById('cmdCheckFull').innerText = `borg check -v --progress ${hostPath}`;
       document.getElementById('cmdBreakLock').innerText = `borg break-lock ${hostPath}`;
-      document.getElementById('cmdCheck').innerText = `borg check --prefix ${arch.name} ${hostPath}`;
 
       const modal = document.getElementById('restoreModal');
       modal.classList.remove('hidden');
@@ -905,11 +921,60 @@
       modal.classList.add('hidden');
     }
 
-    function copyCommand(elementId) {
-      const text = document.getElementById(elementId).innerText;
-      navigator.clipboard.writeText(text).then(() => {
-        alert('Команда скопирована в буфер обмена!');
-      });
+    function copyCommand(elementId, btn) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      const text = el.innerText.trim();
+
+      function onCopied() {
+        if (!btn) return;
+        const origContent = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-check text-emerald-500"></i><span class="text-emerald-600 dark:text-emerald-400 font-semibold">Скопировано!</span>';
+        btn.classList.add('border-emerald-500');
+        setTimeout(() => {
+          btn.innerHTML = origContent;
+          btn.classList.remove('border-emerald-500');
+        }, 2000);
+      }
+
+      // If modern Clipboard API is available in a secure context
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(onCopied).catch(() => {
+          fallbackCopyText(text, onCopied);
+        });
+      } else {
+        // Robust fallback for HTTP (e.g. http://192.168.1.2:8099)
+        fallbackCopyText(text, onCopied);
+      }
+    }
+
+    function fallbackCopyText(text, callback) {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.top = '0';
+      textArea.style.left = '0';
+      textArea.style.width = '2em';
+      textArea.style.height = '2em';
+      textArea.style.padding = '0';
+      textArea.style.border = 'none';
+      textArea.style.outline = 'none';
+      textArea.style.boxShadow = 'none';
+      textArea.style.background = 'transparent';
+      textArea.setAttribute('readonly', '');
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      try {
+        const successful = document.execCommand('copy');
+        if (successful && callback) {
+          callback();
+        }
+      } catch (err) {
+        console.error('Fallback copy failed:', err);
+      }
+      document.body.removeChild(textArea);
     }
 
     async function openGuideModal() {
