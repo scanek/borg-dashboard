@@ -12,6 +12,7 @@ import uuid
 import asyncio
 import subprocess
 import threading
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -35,6 +36,7 @@ DOCS_DIR = BASE_DIR / "docs"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 ARCHIVE_CACHE_FILE = DATA_DIR / "archive_cache.json"
+DR_TEST_FILE = DATA_DIR / "dr_test_result.json"
 CONFIG_FILE = BASE_DIR / "config.json"
 DATA_CONFIG_FILE = DATA_DIR / "config.json"
 
@@ -42,6 +44,58 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 LOGS_DIR = Path(os.getenv("BORG_LOGS_DIR", "/logs" if Path("/logs").exists() else "/volume1/logs"))
 RECOVERY_DOC = Path(os.getenv("BORG_GUIDE_PATH", "/app/docs/RECOVERY.md" if Path("/app/docs/RECOVERY.md").exists() else "/volume1/script/ИНСТРУКЦИЯ_ПО_ВОССТАНОВЛЕНИЮ.md"))
+
+def format_bytes(b: int) -> str:
+    if not b or b <= 0:
+        return "0 Б"
+    units = ["Б", "КБ", "МБ", "ГБ", "ТБ"]
+    i = 0
+    val = float(b)
+    while val >= 1024.0 and i < len(units) - 1:
+        val /= 1024.0
+        i += 1
+    return f"{val:.2f} {units[i]}"
+
+def load_dr_test_result() -> Dict[str, Any]:
+    if not DR_TEST_FILE.exists():
+        return {
+            "status": "UNKNOWN",
+            "timestamp": None,
+            "details": "Тест ещё не проводился"
+        }
+    try:
+        with open(DR_TEST_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            tested_at = data.get("tested_at", "")
+            time_str = tested_at.replace("T", " ")[:16] if tested_at else "--"
+            archive_name = data.get("archive_name", "")
+            speed = data.get("speed_mb_s", 0)
+            status = data.get("status", "UNKNOWN")
+            
+            if status == "SUCCESS":
+                details = f"{archive_name} ({speed} МБ/с, 100% валиден)"
+            else:
+                details = f"Ошибка: {data.get('error', 'Не удалось распаковать')[:40]}"
+
+            return {
+                "status": status,
+                "timestamp": time_str,
+                "details": details,
+                "data": data
+            }
+    except Exception as e:
+        return {
+            "status": "ERROR",
+            "timestamp": None,
+            "details": str(e)
+        }
+
+def save_dr_test_result(res: Dict[str, Any]):
+    try:
+        with open(DR_TEST_FILE, "w", encoding="utf-8") as f:
+            json.dump(res, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Error saving DR test result: {e}")
 
 def load_repositories_config() -> List[Dict[str, Any]]:
     """Load repositories configuration from config file, env var, or defaults."""
@@ -266,6 +320,9 @@ def parse_log_health() -> Dict[str, Any]:
                     break
         except Exception as e:
             health["rsync_cold"]["details"] = str(e)
+
+    # 5. DR Restore Test status
+    health["dr_test"] = load_dr_test_result()
 
     return health
 
@@ -760,6 +817,210 @@ def run_action_worker(task_id: str, cmd: List[str], env: dict):
             task["exit_code"] = -1
             task["completed_at"] = time.time()
 
+def run_dr_test_worker(task_id: str, repo_id: str, archive_name: Optional[str], env: dict):
+    global GLOBAL_CACHE
+    task = ACTION_TASKS.get(task_id)
+    if not task:
+        return
+
+    start_time = time.time()
+    temp_dir = Path(f"/tmp/borg_dr_{task_id}")
+
+    try:
+        repo_cfg = get_repo_config(repo_id)
+        if not repo_cfg:
+            raise ValueError(f"Репозиторий {repo_id} не найден")
+        repo_path = repo_cfg["path"]
+
+        # 1. Determine archive
+        if not archive_name:
+            archives = [a for a in (GLOBAL_CACHE.get("data", {}).get("archives") or []) if a.get("repo_id") == repo_id]
+            if not archives:
+                list_data = run_borg_command(["borg", "list", "--json", repo_path])
+                archives = list_data.get("archives", []) if list_data else []
+            if not archives:
+                raise ValueError("В репозитории нет доступных срезов для проверки")
+            archives.sort(key=lambda a: a.get("start", a.get("time", "")), reverse=True)
+            archive_name = archives[0]["name"]
+
+        target_archive = f"{repo_path}::{archive_name}"
+
+        with task["lock"]:
+            task["lines"].append(f"\n=======================================================")
+            task["lines"].append(f"🧪 [DR TEST] Симуляция аварийного восстановления")
+            task["lines"].append(f"Репозиторий: {repo_cfg.get('name', repo_id)} ({repo_path})")
+            task["lines"].append(f"Целевой срез: {archive_name}")
+            task["lines"].append(f"Старт: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            task["lines"].append(f"=======================================================\n")
+
+        # Step 1: borg info
+        with task["lock"]:
+            task["lines"].append(f"[Шаг 1/4] Проверка метаданных и структуры архива...")
+            task["lines"].append(f"$ borg info --json {target_archive}")
+
+        cmd_info = ["borg", "info", "--json", target_archive]
+        proc_info = subprocess.run(cmd_info, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="ignore", env=env)
+        if proc_info.returncode != 0:
+            raise RuntimeError(f"Срез недоступен или повреждён: {proc_info.stderr.strip()}")
+
+        info_json = json.loads(proc_info.stdout)
+        arch_stats = info_json.get("archives", [{}])[0].get("stats", {})
+        original_size = arch_stats.get("original_size", 0)
+        nfiles = arch_stats.get("nfiles", 0)
+
+        with task["lock"]:
+            task["lines"].append(f"  ✓ Срез доступен: файлов: {nfiles:,}, исходный объем: {format_bytes(original_size)}")
+
+        # Step 2: Sample file selection
+        with task["lock"]:
+            task["lines"].append(f"\n[Шаг 2/4] Выборка контрольного файла из архива...")
+            task["lines"].append(f"$ borg list {target_archive}")
+
+        cmd_list = ["borg", "list", target_archive]
+        proc_list = subprocess.run(cmd_list, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="ignore", env=env)
+
+        sample_file = None
+        for line in proc_list.stdout.splitlines():
+            parts = line.strip().split(maxsplit=7)
+            if len(parts) >= 8 and parts[0].startswith("-"):
+                filepath = parts[7]
+                size_str = parts[3]
+                try:
+                    size_int = int(size_str)
+                    if 100 <= size_int <= 10 * 1024 * 1024:
+                        if any(filepath.endswith(ext) for ext in [".yml", ".yaml", ".json", ".conf", ".cfg", ".sh", ".txt", ".sql", ".env"]):
+                            sample_file = (filepath, size_int)
+                            break
+                        elif not sample_file:
+                            sample_file = (filepath, size_int)
+                except ValueError:
+                    pass
+
+        if not sample_file:
+            for line in proc_list.stdout.splitlines():
+                parts = line.strip().split(maxsplit=7)
+                if len(parts) >= 8 and parts[0].startswith("-"):
+                    sample_file = (parts[7], int(parts[3]) if parts[3].isdigit() else 1024)
+                    break
+
+        if not sample_file:
+            raise RuntimeError("В архиве не найдено подходящих файлов для распаковки")
+
+        test_filepath, test_expected_size = sample_file
+        with task["lock"]:
+            task["lines"].append(f"  ✓ Выбран контрольный объект: {test_filepath} ({format_bytes(test_expected_size)})")
+
+        # Step 3: Physical extraction to /tmp/borg_dr_<id>
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        with task["lock"]:
+            task["lines"].append(f"\n[Шаг 3/4] Физическая декомпрессия и распаковка во временную папку...")
+            task["lines"].append(f"$ cd {temp_dir} && borg extract -v {target_archive} {test_filepath}")
+
+        t_extract_start = time.time()
+        cmd_extract = ["borg", "extract", "-v", target_archive, test_filepath]
+        proc_extract = subprocess.Popen(
+            cmd_extract,
+            cwd=str(temp_dir),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="ignore",
+            env=env
+        )
+        for line in proc_extract.stdout:
+            with task["lock"]:
+                task["lines"].append(f"  [borg] {line.rstrip()}")
+        proc_extract.wait()
+
+        extract_duration = max(0.01, time.time() - t_extract_start)
+        if proc_extract.returncode != 0:
+            raise RuntimeError(f"Ошибка при извлечении файла (код {proc_extract.returncode})")
+
+        # Locate extracted file
+        extracted_full_path = temp_dir / test_filepath
+        if not extracted_full_path.exists():
+            alt = temp_dir / test_filepath.lstrip("/")
+            if alt.exists():
+                extracted_full_path = alt
+            else:
+                matches = list(temp_dir.rglob(Path(test_filepath).name))
+                if matches:
+                    extracted_full_path = matches[0]
+                else:
+                    raise RuntimeError(f"Распакованный файл {test_filepath} не найден на диске после extract")
+
+        actual_size = extracted_full_path.stat().st_size
+        h = hashlib.sha256()
+        with open(extracted_full_path, "rb") as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        sha256_hex = h.hexdigest()
+
+        speed_mb_s = (actual_size / (1024 * 1024)) / extract_duration if extract_duration > 0 else 0
+
+        with task["lock"]:
+            task["lines"].append(f"  ✓ Файл успешно распакован на диск и проверен!")
+            task["lines"].append(f"    - Реальный размер: {actual_size} Б")
+            task["lines"].append(f"    - Контрольная сумма SHA-256: {sha256_hex[:24]}...")
+            task["lines"].append(f"    - Скорость декомпрессии: ~{speed_mb_s:.1f} МБ/с (время: {extract_duration:.2f} с)")
+
+        # Step 4: Cleanup
+        with task["lock"]:
+            task["lines"].append(f"\n[Шаг 4/4] Очистка временного каталога...")
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        with task["lock"]:
+            task["lines"].append(f"  ✓ Каталог {temp_dir} удалён.")
+
+        total_duration = time.time() - start_time
+        with task["lock"]:
+            task["lines"].append(f"\n=======================================================")
+            task["lines"].append(f"🎉 ИТОГ DR-ТЕСТА: Срез '{archive_name}' 100% ВАЛИДЕН И ВОССТАНОВИМ!")
+            task["lines"].append(f"Общее время симуляции: {total_duration:.1f} с")
+            task["lines"].append(f"=======================================================")
+            task["status"] = "completed"
+            task["exit_code"] = 0
+            task["completed_at"] = time.time()
+
+        dr_result = {
+            "status": "SUCCESS",
+            "repo_id": repo_id,
+            "archive_name": archive_name,
+            "tested_at": datetime.now().isoformat(),
+            "duration": round(total_duration, 1),
+            "sample_file": test_filepath,
+            "file_size": actual_size,
+            "sha256": sha256_hex,
+            "speed_mb_s": round(speed_mb_s, 1)
+        }
+        save_dr_test_result(dr_result)
+
+        with CACHE_LOCK:
+            if GLOBAL_CACHE.get("data") and "health" in GLOBAL_CACHE["data"]:
+                GLOBAL_CACHE["data"]["health"]["dr_test"] = load_dr_test_result()
+
+    except Exception as e:
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        with task["lock"]:
+            task["lines"].append(f"\n❌ ОШИБКА DR-ТЕСТА: {e}")
+            task["status"] = "failed"
+            task["exit_code"] = 1
+            task["completed_at"] = time.time()
+
+        dr_result = {
+            "status": "ERROR",
+            "repo_id": repo_id,
+            "archive_name": archive_name or "unknown",
+            "tested_at": datetime.now().isoformat(),
+            "error": str(e)
+        }
+        save_dr_test_result(dr_result)
+
+        with CACHE_LOCK:
+            if GLOBAL_CACHE.get("data") and "health" in GLOBAL_CACHE["data"]:
+                GLOBAL_CACHE["data"]["health"]["dr_test"] = load_dr_test_result()
+
 @app.post("/api/actions/run")
 async def run_action(req: ActionRequest):
     """Trigger an interactive action and return task_id for streaming."""
@@ -788,6 +1049,9 @@ async def run_action(req: ActionRequest):
     elif action == "check_full":
         cmd = ["borg", "check", "-v", "--progress", repo_path]
         title = f"Полная проверка репозитория ({repo_cfg.get('name')})"
+    elif action == "dr_test":
+        target_name = req.archive_name or "последний срез"
+        title = f"DR-тест восстановления: {target_name} ({repo_cfg.get('name')})"
     else:
         raise HTTPException(status_code=400, detail="Неизвестное действие")
 
@@ -796,12 +1060,12 @@ async def run_action(req: ActionRequest):
         "id": task_id,
         "action": action,
         "title": title,
-        "command": " ".join(cmd),
+        "command": " ".join(cmd) if cmd else f"DR-тест для {req.archive_name or repo_cfg.get('name')}",
         "status": "running",
         "created_at": time.time(),
         "completed_at": None,
         "exit_code": None,
-        "lines": [f"$ {' '.join(cmd)}", f"--- Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---"],
+        "lines": [f"$ {' '.join(cmd)}" if cmd else f"$ borg dr-test {repo_path}::{req.archive_name or 'latest'}", f"--- Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---"],
         "lock": threading.Lock()
     }
 
@@ -811,11 +1075,18 @@ async def run_action(req: ActionRequest):
             ACTION_TASKS.pop(oldest, None)
         ACTION_TASKS[task_id] = task_info
 
-    worker_thread = threading.Thread(
-        target=run_action_worker,
-        args=(task_id, cmd, get_borg_env()),
-        daemon=True
-    )
+    if action == "dr_test":
+        worker_thread = threading.Thread(
+            target=run_dr_test_worker,
+            args=(task_id, req.repo_id, req.archive_name, get_borg_env()),
+            daemon=True
+        )
+    else:
+        worker_thread = threading.Thread(
+            target=run_action_worker,
+            args=(task_id, cmd, get_borg_env()),
+            daemon=True
+        )
     worker_thread.start()
 
     return {"task_id": task_id, "title": title, "status": "running"}

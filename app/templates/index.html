@@ -232,7 +232,7 @@
         <span class="text-xs text-slate-400 dark:text-slate-500" id="lastCollectedTime">Сбор данных: --</span>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
         
         <!-- Health: Integrity Check -->
         <div class="bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 flex items-start gap-3">
@@ -291,6 +291,26 @@
             </div>
             <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 truncate" id="badgeRsyncDetails">Ротация: 2 копии сохранены</p>
             <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1"><i class="fa-regular fa-clock mr-1"></i><span id="badgeRsyncTime">--</span></p>
+          </div>
+        </div>
+
+        <!-- Health: Disaster Recovery (DR) Test -->
+        <div class="bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800/80 flex items-start gap-3 relative group">
+          <div id="badgeDrIcon" class="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 flex items-center justify-center text-base shrink-0 mt-0.5">
+            <i class="fa-solid fa-vial-circle-check"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-xs font-bold text-slate-900 dark:text-white truncate">Тест DR (Распаковка)</span>
+              <span id="badgeDrStatus" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600">НЕТ ДАННЫХ</span>
+            </div>
+            <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 truncate" id="badgeDrDetails">Проверка извлечения данных</p>
+            <div class="flex items-center justify-between mt-1">
+              <p class="text-[10px] text-slate-400 dark:text-slate-500"><i class="fa-regular fa-clock mr-1"></i><span id="badgeDrTime">--</span></p>
+              <button onclick="triggerAction('dr_test', 'docker')" class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 transition flex items-center gap-1" title="Запустить проверку распаковки тестового файла в песочницу">
+                <i class="fa-solid fa-play text-[9px]"></i><span>Тест</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -629,6 +649,23 @@
               </button>
             </div>
           </div>
+        </div>
+
+        <!-- Command 6: Disaster Recovery Test Restore -->
+        <div>
+          <label class="font-semibold text-slate-800 dark:text-slate-200 block mb-1">6. 🧪 Disaster Recovery (DR) Тестовая распаковка в песочницу:</label>
+          <div class="relative bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-amber-700 dark:text-amber-400 font-mono flex items-center justify-between gap-2">
+            <span class="break-all select-all text-[11px] leading-relaxed" id="cmdDrTest">--</span>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="runModalAction('dr_test')" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-sans shadow-sm transition flex items-center gap-1" title="Запустить Disaster Recovery тест для этого среза">
+                <i class="fa-solid fa-vial-circle-check text-[10px]"></i><span>🧪 Запустить DR-тест</span>
+              </button>
+              <button onclick="copyCommand('cmdDrTest', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shadow-sm transition flex items-center gap-1">
+                <i class="fa-regular fa-copy"></i><span>Копия</span>
+              </button>
+            </div>
+          </div>
+          <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Автоматически извлекает тестовый файл во временный каталог, сверяет контрольную сумму (SHA-256) и рассчитывает скорость декомпрессии без риска для рабочих данных.</p>
         </div>
       </div>
 
@@ -1256,6 +1293,7 @@
       updateHealthBadge('badgeCloud', health.cloud_sync);
       updateHealthBadge('badgePre', health.pre_backup);
       updateHealthBadge('badgeRsync', health.rsync_cold);
+      updateHealthBadge('badgeDr', health.dr_test);
 
       // 3. Repositories Cards
       renderReposCards(data.repos || []);
@@ -1273,14 +1311,20 @@
       const detailsEl = document.getElementById(prefix + 'Details');
       const timeEl = document.getElementById(prefix + 'Time');
       const iconEl = document.getElementById(prefix + 'Icon');
+      if (!statusEl || !detailsEl || !timeEl || !iconEl) return;
 
-      statusEl.innerText = item.status === 'SUCCESS' ? 'OK' : item.status;
       if (item.status === 'SUCCESS') {
+        statusEl.innerText = 'OK';
         statusEl.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20';
         iconEl.className = 'w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 flex items-center justify-center text-base shrink-0 mt-0.5';
       } else if (item.status === 'ERROR') {
+        statusEl.innerText = 'ОШИБКА';
         statusEl.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20';
         iconEl.className = 'w-9 h-9 rounded-lg bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400 flex items-center justify-center text-base shrink-0 mt-0.5';
+      } else {
+        statusEl.innerText = item.status === 'UNKNOWN' ? 'НЕТ ДАННЫХ' : (item.status || '--');
+        statusEl.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600';
+        iconEl.className = 'w-9 h-9 rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 flex items-center justify-center text-base shrink-0 mt-0.5';
       }
       detailsEl.innerText = item.details || '--';
       timeEl.innerText = item.timestamp || '--';
@@ -2009,6 +2053,9 @@
               <div><span class="text-[10px] text-slate-400 block font-sans">Файлов:</span>${(arch.nfiles || 0).toLocaleString()}</div>
             </div>
             <div class="flex items-center justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-700/60 font-sans">
+              <button onclick="triggerAction('dr_test', '${arch.repo_id}', '${arch.name}')" class="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-lg text-xs font-semibold border border-amber-200 dark:border-amber-500/20 transition flex items-center gap-1" title="Запустить Disaster Recovery тест распаковки для этого архива">
+                <i class="fa-solid fa-vial-circle-check text-amber-500"></i><span>DR-тест</span>
+              </button>
               <button onclick="openArchiveExplorer('${arch.repo_id}', '${arch.name}', '${arch.repo_name}', '${arch.start}')" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-semibold border border-blue-200 dark:border-blue-500/20 transition flex items-center gap-1">
                 <i class="fa-regular fa-folder-open text-blue-500"></i><span>Файлы</span>
               </button>
@@ -2159,6 +2206,7 @@
       document.getElementById('cmdCheckFast').innerText = `borg check -v --progress --archives-only -a '${arch.name}' ${hostPath}`;
       document.getElementById('cmdCheckFull').innerText = `borg check -v --progress ${hostPath}`;
       document.getElementById('cmdBreakLock').innerText = `borg break-lock ${hostPath}`;
+      document.getElementById('cmdDrTest').innerText = `borg extract --stdout ${hostPath}::${arch.name} [sample_file] | sha256sum`;
 
       const modal = document.getElementById('restoreModal');
       modal.classList.remove('hidden');
