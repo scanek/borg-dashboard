@@ -1227,11 +1227,11 @@ def execute_job_worker(task_id: str, job: Dict[str, Any]):
                     task["lines"].append(line.rstrip("\r\n"))
             proc_prune.wait()
 
-        # Step 4: Borg Compact
+        # Step 4: Borg Compact (only if threshold exceeded to avoid heavy I/O on large repos)
         if success:
-            cmd_compact = ["borg", "compact", repo_path]
+            cmd_compact = ["borg", "compact", "--threshold", "10", repo_path]
             with task["lock"]:
-                task["lines"].append(f"\n--- [Шаг 3/3] Оптимизация хранилища (compact) ---")
+                task["lines"].append(f"\n--- [Шаг 3/3] Оптимизация хранилища (compact --threshold 10) ---")
                 task["lines"].append(f"$ {' '.join(cmd_compact)}")
 
             proc_compact = subprocess.Popen(cmd_compact, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore", env=env)
