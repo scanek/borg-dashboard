@@ -944,6 +944,13 @@
                 <input type="number" id="jobFormKeepMonthly" value="3" min="0" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-900 dark:text-white text-center">
               </div>
             </div>
+            <div class="flex items-start gap-2 pt-2 border-t border-slate-200 dark:border-slate-700/50">
+              <input type="checkbox" id="jobFormRunCompact" class="rounded border-slate-300 dark:border-slate-700 text-indigo-600 mt-0.5">
+              <label for="jobFormRunCompact" class="text-[11px] text-slate-700 dark:text-slate-300 cursor-pointer">
+                Оптимизация хранилища (<code class="font-mono text-indigo-500">compact</code>)
+                <span class="block text-[10px] text-slate-400">Выключено для скорости; на больших HDD может занимать минуты</span>
+              </label>
+            </div>
           </div>
 
           <!-- Schedule -->
@@ -1969,6 +1976,7 @@
           document.getElementById('excLog').checked = excludes.includes('*.log');
           const customExc = excludes.filter(e => !['*.tmp', '*.sock', '*cache*', '*.log'].includes(e));
           document.getElementById('jobFormCustomExcludes').value = customExc.join(', ');
+          document.getElementById('jobFormRunCompact').checked = job.run_compact || false;
         }
       } else {
         document.getElementById('jobConfigTitle').innerText = 'Создание новой задачи бэкапа';
@@ -1991,6 +1999,7 @@
         document.getElementById('excCache').checked = true;
         document.getElementById('excLog').checked = false;
         document.getElementById('jobFormCustomExcludes').value = '';
+        document.getElementById('jobFormRunCompact').checked = false;
       }
 
       renderSelectedSources();
@@ -2176,7 +2185,8 @@
           enabled: document.getElementById('jobFormScheduleEnabled').checked,
           frequency: document.getElementById('jobFormFrequency').value,
           time: document.getElementById('jobFormScheduleTime').value || '02:00'
-        }
+        },
+        run_compact: document.getElementById('jobFormRunCompact').checked
       };
 
       try {
