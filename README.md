@@ -304,7 +304,7 @@ cd borg-dashboard
 TZ=Europe/Moscow
 
 # Путь к каталогу с репозиториями Borg на хосте
-BORG_REPOS_HOST_PATH=/srv/dev-disk-by-uuid-278fc176-ec2b-4c6e-bdb2-a5d5882a892d
+BORG_REPOS_HOST_PATH=/srv/dev-disk-by-uuid-
 
 # Отображаемые пути на хосте (для генерации команд восстановления)
 BORG_REPO_1_HOST_PATH=/srv/dev-disk-by-uuid-/borg_backup
