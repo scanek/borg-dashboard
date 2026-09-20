@@ -1157,7 +1157,10 @@ async def get_action_status(task_id: str):
 @app.get("/api/fs/browse")
 async def browse_filesystem(path: Optional[str] = None):
     """Safely browse server directories for selecting backup sources."""
-    default_root = "/srv" if Path("/srv").exists() else ("." if not Path("/volume1").exists() else "/volume1")
+    # Detect first existing root among common server mount paths
+    candidate_roots = [Path("/srv"), Path("/volume1"), Path("/mnt"), Path("/data"), Path("/storage"), Path("/home"), Path("/repos")]
+    existing_root = next((str(r) for r in candidate_roots if r.exists()), ".")
+    default_root = existing_root
     requested_path = (path or default_root).strip()
 
     try:
@@ -1165,8 +1168,17 @@ async def browse_filesystem(path: Optional[str] = None):
     except Exception:
         target = Path(default_root).resolve()
 
-    # Allowed roots whitelist
-    allowed_roots = [Path("/srv"), Path("/volume1"), Path("/repos"), Path("/app/data"), Path("/volume1/script")]
+    # Allowed roots whitelist (common server paths + custom via BORG_ALLOWED_ROOTS)
+    allowed_roots = [
+        Path("/srv"), Path("/volume1"), Path("/repos"), Path("/app/data"),
+        Path("/mnt"), Path("/home"), Path("/data"), Path("/var"), Path("/storage")
+    ]
+    env_roots = os.getenv("BORG_ALLOWED_ROOTS", "")
+    if env_roots:
+        for r in env_roots.split(","):
+            if r.strip():
+                allowed_roots.append(Path(r.strip()))
+
     # Local dev fallback
     if not any(r.exists() for r in allowed_roots):
         allowed_roots.append(BASE_DIR.resolve())

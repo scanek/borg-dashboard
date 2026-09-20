@@ -22,11 +22,12 @@ services:
       # Путь к локальным репозиториям Borg на хосте (настраивается через .env)
       # (Borg требует право на запись для временных lock-файлов при чтении)
       - ${BORG_REPOS_HOST_PATH:-/srv/dev-disk-by-uuid-YOUR-DISK-UUID}:/repos
-      # Каталог с логами бэкапов (read-only)
-      - /volume1/logs:/logs:ro
-      # Руководство по восстановлению (read-only, опционально)
-      - /volume1/script/ИНСТРУКЦИЯ_ПО_ВОССТАНОВЛЕНИЮ.md:/app/docs/RECOVERY.md:ro
+      # Каталог с логами бэкапов (read-only, настраивается в .env)
+      - ${BORG_LOGS_DIR:-/volume1/logs}:/logs:ro
+      # Руководство по восстановлению (read-only, встроенное по умолчанию или кастомное из .env)
+      - ${BORG_GUIDE_PATH:-./app/docs/RECOVERY.md}:/app/docs/RECOVERY.md:ro
       # Доступ к дискам хоста для проводника и резервного копирования (read-only)
+      # При необходимости добавьте или измените точки монтирования под ваш сервер (/mnt, /home, /data)
       - /srv:/srv:ro
       - /volume1:/volume1:ro
       # Сохранение кэша метаданных и конфигураций задач между перезапусками
