@@ -1310,7 +1310,7 @@
 
     function downloadArchiveFile(encodedPath) {
       const path = decodeURIComponent(encodedPath);
-      const url = `/api/archive/download?repo_id=${encodeURIComponent(currentExplorerRepo)}&archive_name=${encodeURIComponent(currentExplorerArchive)}&file_path=${encodeURIComponent(path)}`;
+      const url = `/api/archive/download?repo_id=${encodeURIComponent(currentExplorerRepo)}&archive_name=${encodeURIComponent(currentExplorerArchive)}&path=${encodeURIComponent(path)}&file_path=${encodeURIComponent(path)}`;
       window.open(url, '_blank');
     }
 

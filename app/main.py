@@ -599,16 +599,20 @@ async def get_archive_files(repo_id: str, archive_name: str, folder: Optional[st
 
 
 @app.get("/api/archive/download")
-async def download_archive_file(repo_id: str, archive_name: str, path: str):
+async def download_archive_file(repo_id: str, archive_name: str, path: Optional[str] = None, file_path: Optional[str] = None):
     """Stream extract a single file directly to user browser."""
+    target_path = path or file_path
+    if not target_path:
+        raise HTTPException(status_code=400, detail="Не указан путь к файлу")
+
     repo_cfg = get_repo_config(repo_id)
     if not repo_cfg:
         raise HTTPException(status_code=404, detail="Репозиторий не найден")
 
     repo_path = repo_cfg["path"]
-    filename = Path(path).name or "download"
+    filename = Path(target_path).name or "download"
 
-    cmd = ["borg", "extract", "--stdout", f"{repo_path}::{archive_name}", path]
+    cmd = ["borg", "extract", "--stdout", f"{repo_path}::{archive_name}", target_path]
 
     def iter_file():
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=get_borg_env())
