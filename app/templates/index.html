@@ -342,25 +342,45 @@
       </div>
     </div>
 
-    <!-- ARCHIVES EXPLORER TABLE -->
+    <!-- ARCHIVES EXPLORER TABLE & CALENDAR -->
     <div class="bg-white dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm card-panel">
+      <!-- Top Header & Controls -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
         <div>
           <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <i class="fa-solid fa-list-check text-emerald-500"></i>
+            <i class="fa-solid fa-box-archive text-emerald-500"></i>
             Журнал архивов Borg
           </h2>
-          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Полный перечень всех срезов с метаданными и командами быстрого восстановления</p>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Интерактивный журнал: таблица с пагинацией и календарь активности срезов</p>
         </div>
 
-        <!-- Search & Filter Bar -->
-        <div class="flex items-center gap-3">
-          <div class="relative">
-            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-            <input type="text" id="archiveSearch" oninput="filterArchivesTable()" placeholder="Поиск по имени или дате..." class="bg-slate-50 dark:bg-surface-900 text-xs text-slate-900 dark:text-white pl-8 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500/50 w-52 sm:w-64">
+        <!-- Mode switcher, Period filter, Search, Repo filter -->
+        <div class="flex flex-wrap items-center gap-2.5">
+          <!-- View Switcher (Table / Calendar) -->
+          <div class="flex items-center bg-slate-100 dark:bg-surface-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+            <button id="viewModeTableBtn" onclick="switchArchiveViewMode('table')" class="px-3 py-1.5 rounded-lg font-semibold transition bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm flex items-center gap-1.5" title="Табличный вид с пагинацией">
+              <i class="fa-solid fa-table-list text-emerald-500"></i><span>Таблица</span>
+            </button>
+            <button id="viewModeCalendarBtn" onclick="switchArchiveViewMode('calendar')" class="px-3 py-1.5 rounded-lg font-semibold transition text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5" title="Календарный вид активности">
+              <i class="fa-regular fa-calendar-days text-indigo-500"></i><span>Календарь</span>
+            </button>
           </div>
 
-          <select id="archiveRepoSelect" onchange="filterArchivesTable()" class="bg-slate-50 dark:bg-surface-900 text-xs text-slate-900 dark:text-white px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500/50">
+          <!-- Period Filter Tabs -->
+          <div id="archivePeriodTabs" class="flex items-center bg-slate-100 dark:bg-surface-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+            <button onclick="setArchivePeriodFilter('all')" id="periodFilterAll" class="px-2.5 py-1 rounded-lg font-semibold bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm transition">Все</button>
+            <button onclick="setArchivePeriodFilter('7d')" id="periodFilter7d" class="px-2.5 py-1 rounded-lg font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white transition">7 дней</button>
+            <button onclick="setArchivePeriodFilter('30d')" id="periodFilter30d" class="px-2.5 py-1 rounded-lg font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white transition">30 дней</button>
+            <button onclick="setArchivePeriodFilter('this_month')" id="periodFilterThisMonth" class="px-2.5 py-1 rounded-lg font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white transition">Этот месяц</button>
+          </div>
+
+          <!-- Search & Repo Filter -->
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+            <input type="text" id="archiveSearch" oninput="filterArchivesData()" placeholder="Поиск по имени или дате..." class="bg-slate-50 dark:bg-surface-900 text-xs text-slate-900 dark:text-white pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500/50 w-44 sm:w-56">
+          </div>
+
+          <select id="archiveRepoSelect" onchange="filterArchivesData()" class="bg-slate-50 dark:bg-surface-900 text-xs text-slate-900 dark:text-white px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500/50">
             <option value="all">Все репозитории</option>
             <option value="docker">Docker</option>
             <option value="immich">Immich</option>
@@ -368,29 +388,135 @@
         </div>
       </div>
 
-      <!-- Table -->
-      <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800">
-        <table class="w-full text-left text-xs">
-          <thead class="bg-slate-100 dark:bg-surface-900/90 text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
-            <tr>
-              <th class="py-3 px-4">Репозиторий</th>
-              <th class="py-3 px-4">Имя архива</th>
-              <th class="py-3 px-4">Дата и время</th>
-              <th class="py-3 px-4">Длительность</th>
-              <th class="py-3 px-4">Исходный размер</th>
-              <th class="py-3 px-4">Новых данных (Dedup)</th>
-              <th class="py-3 px-4">Файлов</th>
-              <th class="py-3 px-4 text-right">Действия</th>
-            </tr>
-          </thead>
-          <tbody id="archivesTableBody" class="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
-            <tr>
-              <td colspan="8" class="text-center py-8 text-slate-500 font-sans">
-                <i class="fa-solid fa-spinner fa-spin mr-2"></i> Загрузка архивов...
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <!-- Active Day Filter Chip (when filtered by day from calendar) -->
+      <div id="archiveActiveDayFilter" class="hidden items-center gap-2 mb-3 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 w-fit">
+        <i class="fa-regular fa-calendar-check"></i>
+        <span>Фильтр по дате: <strong id="archiveActiveDayText">--</strong></span>
+        <button onclick="clearArchiveDateFilter()" class="ml-1 hover:text-rose-500 transition" title="Сбросить фильтр по дате">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- VIEW 1: TABLE VIEW (WITH PAGINATION & SORTING) -->
+      <div id="archivesTableView" class="space-y-3">
+        <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200 dark:border-slate-800">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-100 dark:bg-surface-900/90 text-slate-600 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800 select-none">
+              <tr>
+                <th class="py-3 px-4">Репозиторий</th>
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('name')">
+                  <span class="inline-flex items-center gap-1">Имя архива <i id="sortIcon_name" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
+                </th>
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('start')">
+                  <span class="inline-flex items-center gap-1">Дата и время <i id="sortIcon_start" class="fa-solid fa-sort-down text-emerald-500 text-[10px]"></i></span>
+                </th>
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('duration')">
+                  <span class="inline-flex items-center gap-1">Длительность <i id="sortIcon_duration" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
+                </th>
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('original_size')">
+                  <span class="inline-flex items-center gap-1">Исходный размер <i id="sortIcon_original_size" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
+                </th>
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('deduplicated_size')">
+                  <span class="inline-flex items-center gap-1">Новых данных (Dedup) <i id="sortIcon_deduplicated_size" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
+                </th>
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('nfiles')">
+                  <span class="inline-flex items-center gap-1">Файлов <i id="sortIcon_nfiles" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
+                </th>
+                <th class="py-3 px-4 text-right">Действия</th>
+              </tr>
+            </thead>
+            <tbody id="archivesTableBody" class="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
+              <tr>
+                <td colspan="8" class="text-center py-8 text-slate-500 font-sans">
+                  <i class="fa-solid fa-spinner fa-spin mr-2"></i> Загрузка архивов...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div id="archivesPaginationBar" class="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-slate-600 dark:text-slate-400 font-sans">
+          <div class="flex items-center gap-2">
+            <span>Показано <strong class="text-slate-900 dark:text-white font-mono" id="paginationRange">0-0</strong> из <strong class="text-slate-900 dark:text-white font-mono" id="paginationTotal">0</strong></span>
+            <span class="text-slate-300 dark:text-slate-700">•</span>
+            <div class="flex items-center gap-1.5">
+              <span>На странице:</span>
+              <select id="archivePageSizeSelect" onchange="changeArchivePageSize(this.value)" class="bg-slate-50 dark:bg-surface-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-900 dark:text-white focus:outline-none">
+                <option value="10" selected>10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="all">Все</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Page navigation buttons -->
+          <div class="flex items-center gap-1 font-mono text-xs" id="paginationButtons">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 2: CALENDAR VIEW -->
+      <div id="archivesCalendarView" class="hidden space-y-4">
+        <!-- Month navigation & summary bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-surface-900 rounded-xl border border-slate-200 dark:border-slate-800">
+          <div class="flex items-center gap-2">
+            <button onclick="calendarPrevMonth()" class="p-1.5 px-2.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm transition" title="Предыдущий месяц">
+              <i class="fa-solid fa-chevron-left text-xs"></i>
+            </button>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white min-w-[150px] text-center capitalize font-sans" id="calendarMonthTitle">--</h3>
+            <button onclick="calendarNextMonth()" class="p-1.5 px-2.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm transition" title="Следующий месяц">
+              <i class="fa-solid fa-chevron-right text-xs"></i>
+            </button>
+            <button onclick="calendarToday()" class="px-2.5 py-1 text-xs bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-semibold rounded-lg border border-indigo-200 dark:border-indigo-500/20 transition">
+              Сегодня
+            </button>
+          </div>
+
+          <div class="flex items-center gap-3 text-xs">
+            <div class="flex items-center gap-2 font-sans">
+              <span class="inline-flex items-center gap-1 text-[11px] text-slate-600 dark:text-slate-400">
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Docker
+              </span>
+              <span class="inline-flex items-center gap-1 text-[11px] text-slate-600 dark:text-slate-400">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Immich
+              </span>
+            </div>
+            <span class="text-slate-300 dark:text-slate-700">•</span>
+            <span class="text-xs text-slate-600 dark:text-slate-400 font-sans" id="calendarMonthStats">--</span>
+          </div>
+        </div>
+
+        <!-- 7-days Grid -->
+        <div class="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
+          <!-- Day of week headers -->
+          <div class="grid grid-cols-7 bg-slate-100 dark:bg-surface-900 border-b border-slate-200 dark:border-slate-800 text-center font-semibold text-xs text-slate-600 dark:text-slate-400 py-2 font-sans">
+            <div>Пн</div><div>Вт</div><div>Ср</div><div>Чт</div><div>Пт</div><div class="text-amber-600 dark:text-amber-400">Сб</div><div class="text-rose-600 dark:text-rose-400">Вс</div>
+          </div>
+          <!-- Calendar Days Grid -->
+          <div id="calendarGrid" class="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800 bg-slate-50/50 dark:bg-slate-900">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Selected Day Details Panel -->
+        <div id="calendarDayDetailsPanel" class="p-4 bg-slate-50 dark:bg-surface-900/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+          <div class="flex items-center justify-between">
+            <h4 class="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2 font-sans" id="calendarDayDetailsTitle">
+              <i class="fa-regular fa-calendar-check text-emerald-500"></i> Выберите день в календаре
+            </h4>
+            <div id="calendarDayActions" class="hidden items-center gap-2">
+              <button onclick="viewSelectedDayInTable()" class="px-2.5 py-1 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold shadow-sm transition flex items-center gap-1 font-sans">
+                <i class="fa-solid fa-table-list"></i> Показать в таблице
+              </button>
+            </div>
+          </div>
+          <div id="calendarDayDetailsContent" class="text-xs text-slate-500 dark:text-slate-400 font-sans">
+            Нажмите на любой день в календаре выше, чтобы просмотреть список срезов, метаданные и перейти к файлам или командам восстановления.
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1137,8 +1263,8 @@
       // 4. Charts
       renderCharts(data.archives || [], currentChartFilter);
 
-      // 5. Table
-      renderArchivesTable(data.archives || []);
+      // 5. Table & Calendar
+      filterArchivesData();
     }
 
     function updateHealthBadge(prefix, item) {
@@ -1365,27 +1491,18 @@
       chartDuration.render();
     }
 
-    function filterArchivesTable() {
-      if (!globalData) return;
-      const search = document.getElementById('archiveSearch').value.toLowerCase();
-      const repoFilter = document.getElementById('archiveRepoSelect').value;
-
-      let filtered = globalData.archives || [];
-
-      if (repoFilter !== 'all') {
-        filtered = filtered.filter(a => a.repo_id === repoFilter);
-      }
-
-      if (search) {
-        filtered = filtered.filter(a => 
-          (a.name && a.name.toLowerCase().includes(search)) ||
-          (a.start && a.start.toLowerCase().includes(search))
-        );
-      }
-
-      renderArchivesTable(filtered);
-    }
-
+    // -------------------------------------------------------------------------
+    // 📦 ARCHIVES MANAGEMENT: TABLE WITH PAGINATION & CALENDAR
+    // -------------------------------------------------------------------------
+    let archiveViewMode = 'table'; // 'table' | 'calendar'
+    let archivePeriodFilter = 'all'; // 'all' | '7d' | '30d' | 'this_month'
+    let archiveSelectedDate = null; // 'YYYY-MM-DD'
+    let archiveSortField = 'start';
+    let archiveSortAsc = false;
+    let archivePageSize = 10;
+    let archiveCurrentPage = 1;
+    let calendarMonthDate = new Date();
+    let allFilteredArchives = [];
     let currentTableArchives = [];
     let currentModalArch = null;
     let explorerFiles = [];
@@ -1393,15 +1510,176 @@
     let currentExplorerArchive = '';
     let currentEventSource = null;
 
-    function renderArchivesTable(archives) {
-      currentTableArchives = archives || [];
+    function switchArchiveViewMode(mode) {
+      archiveViewMode = mode;
+      const btnTable = document.getElementById('viewModeTableBtn');
+      const btnCal = document.getElementById('viewModeCalendarBtn');
+      const viewTable = document.getElementById('archivesTableView');
+      const viewCal = document.getElementById('archivesCalendarView');
+
+      if (mode === 'table') {
+        btnTable.className = 'px-3 py-1.5 rounded-lg font-semibold transition bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm flex items-center gap-1.5';
+        btnCal.className = 'px-3 py-1.5 rounded-lg font-semibold transition text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5';
+        viewTable.classList.remove('hidden');
+        viewCal.classList.add('hidden');
+        renderArchivesTable();
+      } else {
+        btnCal.className = 'px-3 py-1.5 rounded-lg font-semibold transition bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm flex items-center gap-1.5';
+        btnTable.className = 'px-3 py-1.5 rounded-lg font-semibold transition text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5';
+        viewCal.classList.remove('hidden');
+        viewTable.classList.add('hidden');
+        renderArchivesCalendar();
+      }
+    }
+
+    function setArchivePeriodFilter(period) {
+      archivePeriodFilter = period;
+      archiveSelectedDate = null;
+      const activeDayEl = document.getElementById('archiveActiveDayFilter');
+      if (activeDayEl) {
+        activeDayEl.classList.add('hidden');
+        activeDayEl.classList.remove('flex');
+      }
+
+      ['all', '7d', '30d', 'this_month'].forEach(p => {
+        const id = `periodFilter${p === 'this_month' ? 'ThisMonth' : (p.charAt(0).toUpperCase() + p.slice(1))}`;
+        const btn = document.getElementById(id);
+        if (btn) {
+          if (p === period) {
+            btn.className = 'px-2.5 py-1 rounded-lg font-semibold bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm transition';
+          } else {
+            btn.className = 'px-2.5 py-1 rounded-lg font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white transition';
+          }
+        }
+      });
+
+      archiveCurrentPage = 1;
+      filterArchivesData();
+    }
+
+    function filterArchivesData() {
+      if (!globalData) return;
+      const search = (document.getElementById('archiveSearch')?.value || '').toLowerCase().trim();
+      const repoFilter = document.getElementById('archiveRepoSelect')?.value || 'all';
+
+      let list = [...(globalData.archives || [])];
+
+      // 1. Repo filter
+      if (repoFilter !== 'all') {
+        list = list.filter(a => a.repo_id === repoFilter);
+      }
+
+      // 2. Search filter
+      if (search) {
+        list = list.filter(a => 
+          (a.name && a.name.toLowerCase().includes(search)) ||
+          (a.start && a.start.toLowerCase().includes(search))
+        );
+      }
+
+      // 3. Date / Period filter
+      if (archiveSelectedDate) {
+        list = list.filter(a => {
+          if (!a.start) return false;
+          const d = new Date(a.start);
+          if (isNaN(d.getTime())) return false;
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}` === archiveSelectedDate;
+        });
+      } else if (archivePeriodFilter !== 'all') {
+        const now = new Date();
+        if (archivePeriodFilter === '7d') {
+          const limit = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+          list = list.filter(a => new Date(a.start) >= limit);
+        } else if (archivePeriodFilter === '30d') {
+          const limit = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+          list = list.filter(a => new Date(a.start) >= limit);
+        } else if (archivePeriodFilter === 'this_month') {
+          const curYear = now.getFullYear();
+          const curMonth = now.getMonth();
+          list = list.filter(a => {
+            const d = new Date(a.start);
+            return d.getFullYear() === curYear && d.getMonth() === curMonth;
+          });
+        }
+      }
+
+      // 4. Sort
+      list.sort((a, b) => {
+        let valA = a[archiveSortField];
+        let valB = b[archiveSortField];
+
+        if (archiveSortField === 'start') {
+          valA = new Date(valA).getTime() || 0;
+          valB = new Date(valB).getTime() || 0;
+        } else if (typeof valA === 'string') {
+          valA = valA.toLowerCase();
+          valB = (valB || '').toLowerCase();
+        } else {
+          valA = Number(valA) || 0;
+          valB = Number(valB) || 0;
+        }
+
+        if (valA < valB) return archiveSortAsc ? -1 : 1;
+        if (valA > valB) return archiveSortAsc ? 1 : -1;
+        return 0;
+      });
+
+      allFilteredArchives = list;
+
+      renderArchivesTable();
+      renderArchivesCalendar();
+    }
+
+    function sortArchivesBy(field) {
+      if (archiveSortField === field) {
+        archiveSortAsc = !archiveSortAsc;
+      } else {
+        archiveSortField = field;
+        archiveSortAsc = field === 'name';
+      }
+
+      // Update sort icons in table header
+      ['name', 'start', 'duration', 'original_size', 'deduplicated_size', 'nfiles'].forEach(f => {
+        const icon = document.getElementById(`sortIcon_${f}`);
+        if (!icon) return;
+        if (f === archiveSortField) {
+          icon.className = archiveSortAsc ? 'fa-solid fa-sort-up text-emerald-500 text-[10px]' : 'fa-solid fa-sort-down text-emerald-500 text-[10px]';
+        } else {
+          icon.className = 'fa-solid fa-sort text-slate-400 text-[10px]';
+        }
+      });
+
+      archiveCurrentPage = 1;
+      filterArchivesData();
+    }
+
+    function renderArchivesTable() {
       const tbody = document.getElementById('archivesTableBody');
+      if (!tbody) return;
       tbody.innerHTML = '';
 
-      if (currentTableArchives.length === 0) {
+      const total = allFilteredArchives.length;
+      if (total === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-slate-500 font-sans">Архивы не найдены</td></tr>`;
+        document.getElementById('paginationRange').innerText = '0-0';
+        document.getElementById('paginationTotal').innerText = '0';
+        document.getElementById('paginationButtons').innerHTML = '';
         return;
       }
+
+      // Calculate slice
+      const pageSize = archivePageSize === 'all' ? total : parseInt(archivePageSize);
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      if (archiveCurrentPage > totalPages) archiveCurrentPage = totalPages;
+      if (archiveCurrentPage < 1) archiveCurrentPage = 1;
+
+      const startIdx = (archiveCurrentPage - 1) * pageSize;
+      const endIdx = archivePageSize === 'all' ? total : Math.min(startIdx + pageSize, total);
+
+      currentTableArchives = allFilteredArchives.slice(startIdx, endIdx);
 
       currentTableArchives.forEach((arch, index) => {
         const tr = document.createElement('tr');
@@ -1412,7 +1690,6 @@
           : '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Immich</span>';
 
         const rawSize = formatBytes(arch.original_size || 0);
-        const compSize = formatBytes(arch.compressed_size || 0);
         const dedupDelta = formatBytes(arch.deduplicated_size || 0);
         const nfiles = (arch.nfiles || 0).toLocaleString();
         const duration = (arch.duration || 0) + ' с';
@@ -1439,6 +1716,316 @@
         `;
         tbody.appendChild(tr);
       });
+
+      // Update pagination indicators
+      document.getElementById('paginationRange').innerText = `${startIdx + 1}-${endIdx}`;
+      document.getElementById('paginationTotal').innerText = total;
+
+      renderPaginationControls(totalPages);
+    }
+
+    function renderPaginationControls(totalPages) {
+      const container = document.getElementById('paginationButtons');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (totalPages <= 1) return;
+
+      // Prev button
+      const prevBtn = document.createElement('button');
+      prevBtn.className = `px-2 py-1 rounded border border-slate-200 dark:border-slate-700 ${archiveCurrentPage === 1 ? 'opacity-40 cursor-not-allowed text-slate-400' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'}`;
+      prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left text-[10px]"></i>';
+      prevBtn.disabled = archiveCurrentPage === 1;
+      prevBtn.onclick = () => changeArchivePage(archiveCurrentPage - 1);
+      container.appendChild(prevBtn);
+
+      // Page numbers (max 5 visible buttons)
+      let startPage = Math.max(1, archiveCurrentPage - 2);
+      let endPage = Math.min(totalPages, startPage + 4);
+      if (endPage - startPage < 4) {
+        startPage = Math.max(1, endPage - 4);
+      }
+
+      for (let p = startPage; p <= endPage; p++) {
+        const pBtn = document.createElement('button');
+        if (p === archiveCurrentPage) {
+          pBtn.className = 'px-2.5 py-1 rounded font-bold bg-emerald-600 text-white shadow-sm';
+        } else {
+          pBtn.className = 'px-2.5 py-1 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200';
+        }
+        pBtn.innerText = p;
+        pBtn.onclick = () => changeArchivePage(p);
+        container.appendChild(pBtn);
+      }
+
+      // Next button
+      const nextBtn = document.createElement('button');
+      nextBtn.className = `px-2 py-1 rounded border border-slate-200 dark:border-slate-700 ${archiveCurrentPage === totalPages ? 'opacity-40 cursor-not-allowed text-slate-400' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'}`;
+      nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right text-[10px]"></i>';
+      nextBtn.disabled = archiveCurrentPage === totalPages;
+      nextBtn.onclick = () => changeArchivePage(archiveCurrentPage + 1);
+      container.appendChild(nextBtn);
+    }
+
+    function changeArchivePage(page) {
+      archiveCurrentPage = page;
+      renderArchivesTable();
+    }
+
+    function changeArchivePageSize(size) {
+      archivePageSize = size === 'all' ? 'all' : parseInt(size);
+      archiveCurrentPage = 1;
+      renderArchivesTable();
+    }
+
+    function renderArchivesCalendar() {
+      const grid = document.getElementById('calendarGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      const curYear = calendarMonthDate.getFullYear();
+      const curMonth = calendarMonthDate.getMonth();
+
+      // Month Title in Russian
+      const monthName = calendarMonthDate.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+      document.getElementById('calendarMonthTitle').innerText = monthName;
+
+      // Map archives by date (YYYY-MM-DD)
+      const archivesByDate = {};
+      let monthArchivesCount = 0;
+      let monthTotalDedup = 0;
+
+      const repoFilter = document.getElementById('archiveRepoSelect')?.value || 'all';
+      const search = (document.getElementById('archiveSearch')?.value || '').toLowerCase().trim();
+
+      (globalData && globalData.archives ? globalData.archives : []).forEach(a => {
+        if (!a.start) return;
+        if (repoFilter !== 'all' && a.repo_id !== repoFilter) return;
+        if (search && !(a.name.toLowerCase().includes(search) || a.start.toLowerCase().includes(search))) return;
+
+        const d = new Date(a.start);
+        if (isNaN(d.getTime())) return;
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const dateKey = `${yyyy}-${mm}-${dd}`;
+
+        if (!archivesByDate[dateKey]) archivesByDate[dateKey] = [];
+        archivesByDate[dateKey].push(a);
+
+        if (d.getFullYear() === curYear && d.getMonth() === curMonth) {
+          monthArchivesCount++;
+          monthTotalDedup += (a.deduplicated_size || 0);
+        }
+      });
+
+      document.getElementById('calendarMonthStats').innerText = `Срезов: ${monthArchivesCount} (+${formatBytes(monthTotalDedup, 1)})`;
+
+      const firstDay = new Date(curYear, curMonth, 1);
+      const lastDay = new Date(curYear, curMonth + 1, 0);
+      const totalDays = lastDay.getDate();
+
+      // Monday offset (0 for Mon, 6 for Sun)
+      let startOffset = (firstDay.getDay() + 6) % 7;
+
+      for (let i = 0; i < startOffset; i++) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = 'min-h-[75px] sm:min-h-[85px] p-1.5 bg-slate-100/40 dark:bg-slate-900/40 text-slate-300 dark:text-slate-800 select-none';
+        grid.appendChild(emptyCell);
+      }
+
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      for (let day = 1; day <= totalDays; day++) {
+        const dateStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayArchives = archivesByDate[dateStr] || [];
+        const isToday = dateStr === todayStr;
+        const isSelected = dateStr === archiveSelectedDate;
+
+        const cell = document.createElement('div');
+        cell.className = `min-h-[75px] sm:min-h-[85px] p-1.5 flex flex-col transition cursor-pointer relative group ${
+          isSelected 
+            ? 'bg-indigo-50 dark:bg-indigo-500/20 ring-2 ring-indigo-500 z-10' 
+            : dayArchives.length > 0 
+              ? 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800/80' 
+              : 'bg-white/60 dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+        }`;
+
+        cell.onclick = () => selectCalendarDay(dateStr);
+
+        let headerHtml = `
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-mono text-xs font-bold ${
+              isToday 
+                ? 'w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px]' 
+                : isSelected 
+                  ? 'text-indigo-600 dark:text-indigo-400' 
+                  : 'text-slate-700 dark:text-slate-300'
+            }">${day}</span>
+            ${isToday ? '<span class="text-[9px] font-sans font-bold text-emerald-600 dark:text-emerald-400">Сегодня</span>' : ''}
+          </div>
+        `;
+
+        let chipsHtml = '<div class="flex-1 flex flex-col gap-1 overflow-y-auto custom-scrollbar pr-0.5">';
+        if (dayArchives.length > 0) {
+          dayArchives.forEach(arch => {
+            const isDocker = arch.repo_id === 'docker';
+            const badgeBg = isDocker 
+              ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/20' 
+              : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/20';
+            
+            const timeStr = arch.start ? arch.start.substring(11, 16) : '';
+            const dedupStr = formatBytes(arch.deduplicated_size || 0);
+
+            chipsHtml += `
+              <div class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${badgeBg} flex items-center justify-between gap-1 shadow-xs truncate" title="${arch.name} (${dateStr} ${timeStr}) • Новых: ${dedupStr}">
+                <span class="truncate font-semibold">${isDocker ? 'Docker' : 'Immich'} ${timeStr}</span>
+                <span class="font-bold shrink-0 text-[9px]">${dedupStr}</span>
+              </div>
+            `;
+          });
+        }
+        chipsHtml += '</div>';
+
+        cell.innerHTML = headerHtml + chipsHtml;
+        grid.appendChild(cell);
+      }
+
+      const totalRendered = startOffset + totalDays;
+      const trailingCells = (7 - (totalRendered % 7)) % 7;
+      for (let i = 0; i < trailingCells; i++) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = 'min-h-[75px] sm:min-h-[85px] p-1.5 bg-slate-100/40 dark:bg-slate-900/40 text-slate-300 dark:text-slate-800 select-none';
+        grid.appendChild(emptyCell);
+      }
+
+      updateCalendarDayDetailsPanel();
+    }
+
+    function selectCalendarDay(dateStr) {
+      if (archiveSelectedDate === dateStr) {
+        archiveSelectedDate = null;
+      } else {
+        archiveSelectedDate = dateStr;
+      }
+
+      const activeFilterEl = document.getElementById('archiveActiveDayFilter');
+      if (archiveSelectedDate) {
+        activeFilterEl.classList.remove('hidden');
+        activeFilterEl.classList.add('flex');
+        document.getElementById('archiveActiveDayText').innerText = archiveSelectedDate;
+      } else {
+        activeFilterEl.classList.remove('flex');
+        activeFilterEl.classList.add('hidden');
+      }
+
+      renderArchivesCalendar();
+      renderArchivesTable();
+    }
+
+    function clearArchiveDateFilter() {
+      archiveSelectedDate = null;
+      const activeFilterEl = document.getElementById('archiveActiveDayFilter');
+      if (activeFilterEl) {
+        activeFilterEl.classList.remove('flex');
+        activeFilterEl.classList.add('hidden');
+      }
+      renderArchivesCalendar();
+      renderArchivesTable();
+    }
+
+    function viewSelectedDayInTable() {
+      switchArchiveViewMode('table');
+    }
+
+    function calendarPrevMonth() {
+      calendarMonthDate.setMonth(calendarMonthDate.getMonth() - 1);
+      renderArchivesCalendar();
+    }
+
+    function calendarNextMonth() {
+      calendarMonthDate.setMonth(calendarMonthDate.getMonth() + 1);
+      renderArchivesCalendar();
+    }
+
+    function calendarToday() {
+      calendarMonthDate = new Date();
+      renderArchivesCalendar();
+    }
+
+    function updateCalendarDayDetailsPanel() {
+      const titleEl = document.getElementById('calendarDayDetailsTitle');
+      const contentEl = document.getElementById('calendarDayDetailsContent');
+      const actionsEl = document.getElementById('calendarDayActions');
+      if (!titleEl || !contentEl || !actionsEl) return;
+
+      if (!archiveSelectedDate) {
+        titleEl.innerHTML = '<i class="fa-regular fa-calendar-check text-emerald-500"></i> Выберите день в календаре';
+        contentEl.innerHTML = 'Нажмите на любой день в календаре выше, чтобы просмотреть список срезов, метаданные и перейти к файлам или командам восстановления.';
+        actionsEl.classList.add('hidden');
+        actionsEl.classList.remove('flex');
+        return;
+      }
+
+      const dayArchives = (globalData && globalData.archives ? globalData.archives : []).filter(a => {
+        if (!a.start) return false;
+        const d = new Date(a.start);
+        if (isNaN(d.getTime())) return false;
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}` === archiveSelectedDate;
+      });
+
+      titleEl.innerHTML = `<i class="fa-regular fa-calendar-check text-emerald-500"></i> Срезы за ${archiveSelectedDate} (${dayArchives.length} архивов)`;
+      actionsEl.classList.remove('hidden');
+      actionsEl.classList.add('flex');
+
+      if (dayArchives.length === 0) {
+        contentEl.innerHTML = '<div class="py-2 text-slate-400 font-sans italic">В этот день бэкапы не создавались.</div>';
+        return;
+      }
+
+      let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">';
+      dayArchives.forEach((arch) => {
+        const isDocker = arch.repo_id === 'docker';
+        const repoBadge = isDocker
+          ? '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-blue-100 text-blue-800 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">Docker</span>'
+          : '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Immich</span>';
+
+        html += `
+          <div class="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-2">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                ${repoBadge}
+                <span class="font-mono font-bold text-slate-900 dark:text-white text-xs">${arch.name}</span>
+              </div>
+              <span class="text-xs text-slate-500 font-mono">${formatDate(arch.start)}</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-[11px] font-mono bg-slate-50 dark:bg-slate-900/60 p-2 rounded-lg text-slate-700 dark:text-slate-300">
+              <div><span class="text-[10px] text-slate-400 block font-sans">Исходный:</span>${formatBytes(arch.original_size)}</div>
+              <div><span class="text-[10px] text-slate-400 block font-sans">Новых:</span><strong class="text-emerald-600 dark:text-emerald-400">${formatBytes(arch.deduplicated_size)}</strong></div>
+              <div><span class="text-[10px] text-slate-400 block font-sans">Файлов:</span>${(arch.nfiles || 0).toLocaleString()}</div>
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-700/60 font-sans">
+              <button onclick="openArchiveExplorer('${arch.repo_id}', '${arch.name}', '${arch.repo_name}', '${arch.start}')" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-semibold border border-blue-200 dark:border-blue-500/20 transition flex items-center gap-1">
+                <i class="fa-regular fa-folder-open text-blue-500"></i><span>Файлы</span>
+              </button>
+              <button onclick="openRestoreModalDirect('${arch.repo_id}', '${arch.name}')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold transition flex items-center gap-1">
+                <i class="fa-solid fa-terminal text-emerald-500"></i><span>Команды</span>
+              </button>
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+      contentEl.innerHTML = html;
+    }
+
+    function openRestoreModalDirect(repoId, archName) {
+      const arch = (globalData && globalData.archives ? globalData.archives : []).find(a => a.repo_id === repoId && a.name === archName);
+      if (arch) openRestoreModal(arch);
     }
 
     // -------------------------------------------------------------------------
