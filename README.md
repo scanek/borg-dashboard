@@ -307,8 +307,8 @@ TZ=Europe/Moscow
 BORG_REPOS_HOST_PATH=/srv/dev-disk-by-uuid-278fc176-ec2b-4c6e-bdb2-a5d5882a892d
 
 # Отображаемые пути на хосте (для генерации команд восстановления)
-BORG_REPO_1_HOST_PATH=/srv/dev-disk-by-uuid-278fc176-ec2b-4c6e-bdb2-a5d5882a892d/borg_backup
-BORG_REPO_2_HOST_PATH=/srv/dev-disk-by-uuid-278fc176-ec2b-4c6e-bdb2-a5d5882a892d/backups/immich-borg
+BORG_REPO_1_HOST_PATH=/srv/dev-disk-by-uuid-/borg_backup
+BORG_REPO_2_HOST_PATH=/srv/dev-disk-by-uuid-/backups/immich-borg
 ```
 
 ### 3. Конфигурация `docker-compose.yml`
