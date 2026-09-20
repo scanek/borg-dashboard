@@ -96,6 +96,16 @@
           <span>Обновить</span>
         </button>
 
+        <button onclick="openDiffModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+          <i class="fa-solid fa-code-compare text-indigo-500"></i>
+          <span>Сравнить срезы</span>
+        </button>
+
+        <button onclick="openActionsModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
+          <i class="fa-solid fa-bolt-lightning"></i>
+          <span>Действия Borg</span>
+        </button>
+
         <button onclick="openGuideModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-600/20 dark:hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30 transition shadow-sm">
           <i class="fa-solid fa-book-medical"></i>
           <span>Инструкция DR</span>
@@ -119,7 +129,7 @@
   <main class="max-w-7xl w-full mx-auto px-4 lg:px-8 py-6 space-y-6 flex-1">
 
     <!-- OVERVIEW CARDS (KPIs) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
       
       <!-- Card 1: Protected Raw Data -->
       <div class="bg-white dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden card-panel">
@@ -181,6 +191,27 @@
         <div class="text-xs text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1.5">
           <i class="fa-solid fa-calendar-check text-amber-500"></i>
           <span id="kpiArchivesSub">2 репозитория на /dev/sde1</span>
+        </div>
+      </div>
+
+      <!-- Card 5: Storage Runway & Forecast -->
+      <div class="bg-white dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden card-panel">
+        <div class="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider">Запас диска</span>
+          <div class="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-gauge-high"></i>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <div class="text-3xl font-extrabold text-indigo-600 dark:text-indigo-400 tracking-tight" id="kpiRunway">--</div>
+          <span class="text-xs font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30" id="kpiFreeDisk">--</span>
+        </div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1.5">
+          <i class="fa-solid fa-chart-line text-indigo-500"></i>
+          <span id="kpiRunwaySub">Прирост: ~ -- / мес</span>
+        </div>
+        <div class="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full mt-2.5 overflow-hidden">
+          <div id="kpiDiskBar" class="bg-indigo-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
         </div>
       </div>
 
@@ -424,9 +455,14 @@
           <label class="font-semibold text-slate-800 dark:text-slate-200 block mb-1">3. Быстрая проверка целостности только этого среза (секунды, с прогрессом):</label>
           <div class="relative bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between gap-2">
             <span class="break-all select-all text-[11px] leading-relaxed" id="cmdCheckFast">--</span>
-            <button onclick="copyCommand('cmdCheckFast', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm transition flex items-center gap-1">
-              <i class="fa-regular fa-copy"></i><span>Копия</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="runModalAction('check_fast')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-sans shadow-sm transition flex items-center gap-1" title="Запустить проверку прямо в дашборде">
+                <i class="fa-solid fa-play text-[10px]"></i><span>Запустить</span>
+              </button>
+              <button onclick="copyCommand('cmdCheckFast', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shadow-sm transition flex items-center gap-1">
+                <i class="fa-regular fa-copy"></i><span>Копия</span>
+              </button>
+            </div>
           </div>
           <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Флаг <code class="text-emerald-600 dark:text-emerald-400">--archives-only</code> проверяет только метаданные и блоки этого среза без долгого чтения всего диска.</p>
         </div>
@@ -436,9 +472,14 @@
           <label class="font-semibold text-slate-800 dark:text-slate-200 block mb-1">4. Полная проверка структуры репозитория (сканирование всех блоков на диске):</label>
           <div class="relative bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between gap-2">
             <span class="break-all select-all text-[11px] leading-relaxed" id="cmdCheckFull">--</span>
-            <button onclick="copyCommand('cmdCheckFull', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm transition flex items-center gap-1">
-              <i class="fa-regular fa-copy"></i><span>Копия</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="runModalAction('check_full')" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-sans shadow-sm transition flex items-center gap-1" title="Запустить полную проверку в дашборде">
+                <i class="fa-solid fa-play text-[10px]"></i><span>Запустить</span>
+              </button>
+              <button onclick="copyCommand('cmdCheckFull', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shadow-sm transition flex items-center gap-1">
+                <i class="fa-regular fa-copy"></i><span>Копия</span>
+              </button>
+            </div>
           </div>
           <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Флаг <code class="text-emerald-600 dark:text-emerald-400">--progress</code> выводит процент выполнения в реальном времени.</p>
         </div>
@@ -448,9 +489,14 @@
           <label class="font-semibold text-slate-800 dark:text-slate-200 block mb-1">5. Снять зависшую блокировку (если процесс проверки/бэкапа был прерван):</label>
           <div class="relative bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-emerald-700 dark:text-emerald-400 font-mono flex items-center justify-between gap-2">
             <span class="break-all select-all text-[11px] leading-relaxed" id="cmdBreakLock">--</span>
-            <button onclick="copyCommand('cmdBreakLock', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm transition flex items-center gap-1">
-              <i class="fa-regular fa-copy"></i><span>Копия</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="runModalAction('break_lock')" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-sans shadow-sm transition flex items-center gap-1" title="Снять lock в дашборде">
+                <i class="fa-solid fa-unlock-keyhole text-[10px]"></i><span>Снять lock</span>
+              </button>
+              <button onclick="copyCommand('cmdBreakLock', this)" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded text-[11px] font-sans border border-slate-200 dark:border-slate-700 shadow-sm transition flex items-center gap-1">
+                <i class="fa-regular fa-copy"></i><span>Копия</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -487,6 +533,225 @@
 
       <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex justify-end shrink-0">
         <button onclick="closeGuideModal()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold transition">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ARCHIVE FILE EXPLORER -->
+  <div id="explorerModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-4xl w-full max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 p-4 shrink-0 bg-slate-50 dark:bg-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-folder-tree"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-slate-900 dark:text-white text-sm" id="explorerArchiveTitle">Проводник архива</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400" id="explorerArchiveSub">Загрузка структуры...</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="relative">
+            <i class="fa-solid fa-filter absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
+            <input type="text" id="explorerSearch" oninput="filterExplorerFiles()" placeholder="Фильтр файлов..." class="bg-white dark:bg-surface-900 text-xs text-slate-900 dark:text-white pl-7 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-blue-500/50 w-44 sm:w-60">
+          </div>
+          <button onclick="closeArchiveExplorer()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- File list table -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 dark:bg-surface-900/60 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800 sticky top-0">
+            <tr>
+              <th class="py-2.5 px-3">Имя файла / Путь</th>
+              <th class="py-2.5 px-3">Размер</th>
+              <th class="py-2.5 px-3">Дата изменения</th>
+              <th class="py-2.5 px-3 text-right">Действие</th>
+            </tr>
+          </thead>
+          <tbody id="explorerTableBody" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
+            <tr>
+              <td colspan="4" class="text-center py-12 text-slate-500 font-sans">
+                <i class="fa-solid fa-spinner fa-spin mr-2 text-blue-500"></i> Чтение оглавления архива Borg...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between shrink-0 text-xs">
+        <span class="text-slate-500 dark:text-slate-400" id="explorerCountInfo">Всего файлов: --</span>
+        <button onclick="closeArchiveExplorer()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-semibold transition">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ARCHIVE DIFF -->
+  <div id="diffModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-4xl w-full max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 p-4 shrink-0 bg-slate-50 dark:bg-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-code-compare"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-slate-900 dark:text-white text-sm">Сравнение срезов (Archive Diff)</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Анализ добавленных, удалённых и изменившихся файлов между двумя бэкапами</p>
+          </div>
+        </div>
+        <button onclick="closeDiffModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Controls -->
+      <div class="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex flex-wrap items-center gap-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Репозиторий:</label>
+          <select id="diffRepoSelect" onchange="onDiffRepoChange()" class="bg-white dark:bg-surface-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none">
+            <option value="docker">Docker</option>
+            <option value="immich">Immich</option>
+          </select>
+        </div>
+
+        <div class="flex-1 min-w-[200px]">
+          <label class="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Базовый срез (А - старый):</label>
+          <select id="diffArchive1" class="w-full bg-white dark:bg-surface-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none"></select>
+        </div>
+
+        <div class="flex-1 min-w-[200px]">
+          <label class="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Сравниваемый срез (Б - новый):</label>
+          <select id="diffArchive2" class="w-full bg-white dark:bg-surface-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none"></select>
+        </div>
+
+        <div class="self-end">
+          <button onclick="runDiffCompare()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition inline-flex items-center gap-1.5">
+            <i class="fa-solid fa-play text-xs"></i>Сравнить
+          </button>
+        </div>
+      </div>
+
+      <!-- Diff summary stats -->
+      <div id="diffSummaryPanel" class="hidden p-3 bg-slate-100 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-4 text-xs font-sans">
+        <span class="px-2.5 py-1 rounded-md bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-semibold" id="diffStatAdded">+0 добавлено</span>
+        <span class="px-2.5 py-1 rounded-md bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-semibold" id="diffStatModified">~0 изменено</span>
+        <span class="px-2.5 py-1 rounded-md bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-300 font-semibold" id="diffStatRemoved">-0 удалено</span>
+        <span class="text-slate-600 dark:text-slate-400 ml-auto" id="diffStatDelta">Дельта объема: 0 Б</span>
+      </div>
+
+      <!-- Diff list -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 dark:bg-surface-900/60 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800 sticky top-0">
+            <tr>
+              <th class="py-2.5 px-3">Статус</th>
+              <th class="py-2.5 px-3">Путь к файлу</th>
+              <th class="py-2.5 px-3 text-right">Изменение размера</th>
+            </tr>
+          </thead>
+          <tbody id="diffTableBody" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
+            <tr>
+              <td colspan="3" class="text-center py-12 text-slate-400 font-sans">
+                Выберите срезы и нажмите «Сравнить» для анализа изменений
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex justify-end shrink-0 text-xs">
+        <button onclick="closeDiffModal()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-semibold transition">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: BORG ACTIONS & LIVE TERMINAL -->
+  <div id="actionsModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-3xl w-full max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 p-4 shrink-0 bg-slate-50 dark:bg-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-terminal"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-slate-900 dark:text-white text-sm">Центр управления действиями Borg</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Быстрый запуск операций со встроенной консолью вывода</p>
+          </div>
+        </div>
+        <button onclick="closeActionsModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Action cards -->
+      <div class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 bg-slate-50/50 dark:bg-slate-800/30 border-b border-slate-200 dark:border-slate-800 text-xs">
+        <!-- Action 1: Break lock Docker -->
+        <button onclick="triggerAction('break_lock', 'docker')" class="p-3 text-left rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 transition shadow-sm group">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition">Снять Lock (Docker)</span>
+            <i class="fa-solid fa-unlock-keyhole text-amber-500"></i>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">Снять зависшую блокировку с репозитория Docker</p>
+        </button>
+
+        <!-- Action 2: Break lock Immich -->
+        <button onclick="triggerAction('break_lock', 'immich')" class="p-3 text-left rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 transition shadow-sm group">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition">Снять Lock (Immich)</span>
+            <i class="fa-solid fa-unlock-keyhole text-amber-500"></i>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">Снять зависшую блокировку с репозитория Immich</p>
+        </button>
+
+        <!-- Action 3: Full Check Docker -->
+        <button onclick="triggerAction('check_full', 'docker')" class="p-3 text-left rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 transition shadow-sm group">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition">Проверка (Docker)</span>
+            <i class="fa-solid fa-shield-check text-emerald-500"></i>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">Полная проверка всех блоков репозитория Docker</p>
+        </button>
+
+        <!-- Action 4: Full Check Immich -->
+        <button onclick="triggerAction('check_full', 'immich')" class="p-3 text-left rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 transition shadow-sm group">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition">Проверка (Immich)</span>
+            <i class="fa-solid fa-shield-check text-emerald-500"></i>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">Полная проверка всех блоков репозитория Immich</p>
+        </button>
+
+        <!-- Action 5: Refresh Cache -->
+        <button onclick="triggerAction('refresh_cache')" class="p-3 text-left rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 transition shadow-sm group col-span-1 sm:col-span-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition">Пересчитать кэш дашборда</span>
+            <i class="fa-solid fa-rotate text-blue-500"></i>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">Принудительно обновить метаданные и метрики дедупликации</p>
+        </button>
+      </div>
+
+      <!-- Live Terminal Output -->
+      <div class="flex-1 bg-[#090d16] p-4 font-mono text-xs overflow-y-auto custom-scrollbar flex flex-col min-h-[260px] max-h-[360px]" id="terminalWindow">
+        <div class="text-slate-500 flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+          <span id="terminalTitle"><i class="fa-solid fa-terminal mr-1 text-emerald-400"></i>Консоль вывода</span>
+          <span id="terminalStatusBadge" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">Ожидание команды</span>
+        </div>
+        <div id="terminalBody" class="space-y-1 text-emerald-400 flex-1 whitespace-pre-wrap select-all">Готов к запуску. Выберите команду выше.</div>
+      </div>
+
+      <!-- Footer -->
+      <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between shrink-0 text-xs">
+        <button onclick="clearTerminal()" class="px-3 py-1 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition">Очистить вывод</button>
+        <button onclick="closeActionsModal()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-semibold transition">Закрыть</button>
       </div>
     </div>
   </div>
@@ -594,6 +859,37 @@
       document.getElementById('kpiSavedGb').innerText = `Сэкономлено ~ ${formatBytes(summary.saved_bytes || 0, 1)}`;
       document.getElementById('kpiArchives').innerText = (summary.total_archives || 0) + ' срезов';
       document.getElementById('lastCollectedTime').innerText = 'Сбор данных: ' + (summary.last_collected || '--');
+
+      // Card 5: Storage Runway & Capacity Forecast
+      const forecast = data.storage_forecast || {};
+      const years = forecast.years_until_full;
+      let runwayText = '--';
+      if (years !== undefined && years !== null) {
+        if (years >= 99) {
+          runwayText = 'Стабильно';
+        } else if (years > 10) {
+          runwayText = '> 10 лет';
+        } else if (years >= 1) {
+          runwayText = `${years} г.`;
+        } else {
+          runwayText = `${forecast.months_until_full || 0} мес.`;
+        }
+      }
+      document.getElementById('kpiRunway').innerText = runwayText;
+      document.getElementById('kpiFreeDisk').innerText = `Свободно ${formatBytes(forecast.free_bytes || 0, 0)}`;
+      document.getElementById('kpiRunwaySub').innerText = `Прирост: ~ ${formatBytes(forecast.monthly_growth_bytes || 0, 1)} / мес`;
+      const diskBar = document.getElementById('kpiDiskBar');
+      if (diskBar) {
+        const pctUsed = forecast.percent_used || 0;
+        diskBar.style.width = `${Math.min(100, pctUsed)}%`;
+        if (pctUsed > 90) {
+          diskBar.className = 'bg-rose-500 h-full rounded-full transition-all duration-500';
+        } else if (pctUsed > 80) {
+          diskBar.className = 'bg-amber-500 h-full rounded-full transition-all duration-500';
+        } else {
+          diskBar.className = 'bg-indigo-500 h-full rounded-full transition-all duration-500';
+        }
+      }
 
       // 2. Health Badges
       const health = data.health || {};
@@ -857,16 +1153,24 @@
       renderArchivesTable(filtered);
     }
 
+    let currentTableArchives = [];
+    let currentModalArch = null;
+    let explorerFiles = [];
+    let currentExplorerRepo = '';
+    let currentExplorerArchive = '';
+    let currentEventSource = null;
+
     function renderArchivesTable(archives) {
+      currentTableArchives = archives || [];
       const tbody = document.getElementById('archivesTableBody');
       tbody.innerHTML = '';
 
-      if (archives.length === 0) {
+      if (currentTableArchives.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-slate-500 font-sans">Архивы не найдены</td></tr>`;
         return;
       }
 
-      archives.forEach(arch => {
+      currentTableArchives.forEach((arch, index) => {
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/40 transition';
 
@@ -889,17 +1193,143 @@
           <td class="py-3 px-4 text-slate-700 dark:text-slate-300">${rawSize}</td>
           <td class="py-3 px-4 text-emerald-600 dark:text-emerald-400 font-bold">${dedupDelta}</td>
           <td class="py-3 px-4 text-slate-500 dark:text-slate-400">${nfiles}</td>
-          <td class="py-3 px-4 text-right">
-            <button onclick='openRestoreModal(${JSON.stringify(arch)})' class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-lg text-xs font-sans border border-slate-200 dark:border-slate-700 shadow-sm transition">
-              <i class="fa-solid fa-terminal mr-1 text-emerald-500"></i>Команды
-            </button>
+          <td class="py-3 px-4 text-right whitespace-nowrap">
+            <div class="inline-flex items-center gap-1.5">
+              <button onclick="openArchiveExplorerByIndex(${index})" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-sans border border-blue-200 dark:border-blue-500/20 shadow-sm transition flex items-center gap-1" title="Открыть проводник файлов этого среза">
+                <i class="fa-regular fa-folder-open text-blue-500"></i><span>Файлы</span>
+              </button>
+              <button onclick="openRestoreModalByIndex(${index})" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-lg text-xs font-sans border border-slate-200 dark:border-slate-700 shadow-sm transition flex items-center gap-1" title="Команды восстановления и проверка">
+                <i class="fa-solid fa-terminal text-emerald-500"></i><span>Команды</span>
+              </button>
+            </div>
           </td>
         `;
         tbody.appendChild(tr);
       });
     }
 
+    // -------------------------------------------------------------------------
+    // 📂 1. ARCHIVE FILE EXPLORER & DIRECT DOWNLOAD
+    // -------------------------------------------------------------------------
+    function openArchiveExplorerByIndex(index) {
+      const arch = currentTableArchives[index];
+      if (arch) openArchiveExplorer(arch.repo_id, arch.name, arch.repo_name, arch.start);
+    }
+
+    async function openArchiveExplorer(repoId, archiveName, repoName, start) {
+      currentExplorerRepo = repoId;
+      currentExplorerArchive = archiveName;
+
+      document.getElementById('explorerArchiveTitle').innerText = archiveName;
+      document.getElementById('explorerArchiveSub').innerText = `Репозиторий: ${repoName || repoId} • Срез от ${formatDate(start)}`;
+      document.getElementById('explorerSearch').value = '';
+      document.getElementById('explorerCountInfo').innerText = 'Загрузка списка...';
+
+      const tbody = document.getElementById('explorerTableBody');
+      tbody.innerHTML = `<tr><td colspan="4" class="text-center py-14 text-slate-500 font-sans"><i class="fa-solid fa-spinner fa-spin mr-2 text-blue-500 text-base"></i> Загрузка оглавления архива Borg...</td></tr>`;
+
+      const modal = document.getElementById('explorerModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      try {
+        const res = await fetch(`/api/archive/files?repo_id=${encodeURIComponent(repoId)}&archive_name=${encodeURIComponent(archiveName)}`);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Не удалось получить список файлов');
+        }
+        const data = await res.json();
+        explorerFiles = data.files || [];
+        document.getElementById('explorerCountInfo').innerText = `Всего объектов: ${explorerFiles.length.toLocaleString()}`;
+        renderExplorerTable(explorerFiles);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-12 text-rose-500 font-sans"><i class="fa-solid fa-triangle-exclamation mr-2"></i> Ошибка: ${err.message}</td></tr>`;
+        document.getElementById('explorerCountInfo').innerText = 'Ошибка';
+      }
+    }
+
+    function renderExplorerTable(files) {
+      const tbody = document.getElementById('explorerTableBody');
+      tbody.innerHTML = '';
+
+      if (files.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-10 text-slate-400 font-sans">Файлы не найдены</td></tr>`;
+        return;
+      }
+
+      // Display up to 1000 files for high responsiveness
+      const displayFiles = files.slice(0, 1000);
+
+      displayFiles.forEach(file => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/40 transition';
+
+        let icon = '<i class="fa-regular fa-file text-slate-400 mr-2"></i>';
+        let sizeText = formatBytes(file.size || 0);
+        let actionBtn = '';
+
+        if (file.type === 'd') {
+          icon = '<i class="fa-regular fa-folder text-amber-500 mr-2"></i>';
+          sizeText = '<span class="text-slate-400 font-sans">папка</span>';
+          actionBtn = '<span class="text-slate-400 text-[10px]">—</span>';
+        } else if (file.type === 'l') {
+          icon = '<i class="fa-solid fa-link text-purple-400 mr-2"></i>';
+          actionBtn = '<span class="text-slate-400 text-[10px]">ссылка</span>';
+        } else {
+          icon = '<i class="fa-regular fa-file-code text-blue-500 mr-2"></i>';
+          actionBtn = `
+            <button onclick="downloadArchiveFile('${encodeURIComponent(file.path)}')" class="px-2.5 py-0.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 rounded text-[11px] font-sans border border-blue-200 dark:border-blue-500/20 transition flex items-center gap-1 ml-auto shadow-sm" title="Скачать файл прямо из бэкапа">
+              <i class="fa-solid fa-download text-[10px]"></i><span>Скачать</span>
+            </button>
+          `;
+        }
+
+        tr.innerHTML = `
+          <td class="py-2 px-3 text-slate-800 dark:text-slate-200 break-all text-[11px]">
+            ${icon}<span>${file.path}</span>
+          </td>
+          <td class="py-2 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">${sizeText}</td>
+          <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${formatDate(file.mtime)}</td>
+          <td class="py-2 px-3 text-right whitespace-nowrap">${actionBtn}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterExplorerFiles() {
+      const q = document.getElementById('explorerSearch').value.toLowerCase().trim();
+      if (!q) {
+        renderExplorerTable(explorerFiles);
+        document.getElementById('explorerCountInfo').innerText = `Всего объектов: ${explorerFiles.length.toLocaleString()}`;
+        return;
+      }
+      const filtered = explorerFiles.filter(f => f.path.toLowerCase().includes(q));
+      document.getElementById('explorerCountInfo').innerText = `Найдено: ${filtered.length.toLocaleString()} из ${explorerFiles.length.toLocaleString()}`;
+      renderExplorerTable(filtered);
+    }
+
+    function downloadArchiveFile(encodedPath) {
+      const path = decodeURIComponent(encodedPath);
+      const url = `/api/archive/download?repo_id=${encodeURIComponent(currentExplorerRepo)}&archive_name=${encodeURIComponent(currentExplorerArchive)}&file_path=${encodeURIComponent(path)}`;
+      window.open(url, '_blank');
+    }
+
+    function closeArchiveExplorer() {
+      const modal = document.getElementById('explorerModal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    // -------------------------------------------------------------------------
+    // 📋 2. RESTORE MODAL COMMANDS
+    // -------------------------------------------------------------------------
+    function openRestoreModalByIndex(index) {
+      const arch = currentTableArchives[index];
+      if (arch) openRestoreModal(arch);
+    }
+
     function openRestoreModal(arch) {
+      currentModalArch = arch;
       document.getElementById('modalArchiveTitle').innerText = arch.name;
       document.getElementById('modalArchiveSub').innerText = `Репозиторий: ${arch.repo_name} • Срез от ${formatDate(arch.start)}`;
 
@@ -919,6 +1349,244 @@
       const modal = document.getElementById('restoreModal');
       modal.classList.remove('flex');
       modal.classList.add('hidden');
+    }
+
+    function runModalAction(action) {
+      if (!currentModalArch) return;
+      const repoId = currentModalArch.repo_id;
+      const archName = currentModalArch.name;
+      closeRestoreModal();
+      triggerAction(action, repoId, archName);
+    }
+
+    // -------------------------------------------------------------------------
+    // ⚖️ 3. ARCHIVE DIFF
+    // -------------------------------------------------------------------------
+    function openDiffModal() {
+      const modal = document.getElementById('diffModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      onDiffRepoChange();
+    }
+
+    function closeDiffModal() {
+      const modal = document.getElementById('diffModal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    function onDiffRepoChange() {
+      const repo = document.getElementById('diffRepoSelect').value;
+      const archives = (globalData && globalData.archives ? globalData.archives : [])
+        .filter(a => a.repo_id === repo)
+        .sort((a, b) => new Date(b.start) - new Date(a.start)); // Newest first
+
+      const sel1 = document.getElementById('diffArchive1');
+      const sel2 = document.getElementById('diffArchive2');
+      sel1.innerHTML = '';
+      sel2.innerHTML = '';
+
+      archives.forEach((a, i) => {
+        const opt1 = document.createElement('option');
+        opt1.value = a.name;
+        opt1.text = `${a.name} (${formatDate(a.start)})`;
+        sel1.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = a.name;
+        opt2.text = `${a.name} (${formatDate(a.start)})`;
+        sel2.appendChild(opt2);
+      });
+
+      // Default: A = older (index 1), B = newer (index 0)
+      if (archives.length >= 2) {
+        sel1.selectedIndex = 1;
+        sel2.selectedIndex = 0;
+      } else if (archives.length === 1) {
+        sel1.selectedIndex = 0;
+        sel2.selectedIndex = 0;
+      }
+    }
+
+    async function runDiffCompare() {
+      const repo = document.getElementById('diffRepoSelect').value;
+      const a1 = document.getElementById('diffArchive1').value;
+      const a2 = document.getElementById('diffArchive2').value;
+
+      if (!a1 || !a2) {
+        alert('Пожалуйста, выберите оба среза для сравнения.');
+        return;
+      }
+
+      const tbody = document.getElementById('diffTableBody');
+      tbody.innerHTML = `<tr><td colspan="3" class="text-center py-12 text-slate-500 font-sans"><i class="fa-solid fa-spinner fa-spin mr-2 text-indigo-500"></i> Сравнение срезов через borg diff...</td></tr>`;
+      document.getElementById('diffSummaryPanel').classList.add('hidden');
+
+      try {
+        const res = await fetch(`/api/archive/diff?repo_id=${encodeURIComponent(repo)}&archive1=${encodeURIComponent(a1)}&archive2=${encodeURIComponent(a2)}`);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Ошибка выполнения');
+        }
+        const data = await res.json();
+        const summary = data.summary || {};
+
+        document.getElementById('diffStatAdded').innerText = `+${summary.added_files || 0} добавлено`;
+        document.getElementById('diffStatModified').innerText = `~${summary.modified_files || 0} изменено`;
+        document.getElementById('diffStatRemoved').innerText = `-${summary.removed_files || 0} удалено`;
+
+        const netBytes = summary.net_bytes || 0;
+        const sign = netBytes > 0 ? '+' : '';
+        document.getElementById('diffStatDelta').innerText = `Дельта объема: ${sign}${formatBytes(netBytes)}`;
+        document.getElementById('diffSummaryPanel').classList.remove('hidden');
+
+        const items = data.diff || [];
+        tbody.innerHTML = '';
+        if (items.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="3" class="text-center py-12 text-slate-500 font-sans">Изменений между выбранными срезами не обнаружено (идентичны).</td></tr>`;
+          return;
+        }
+
+        items.forEach(item => {
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/40 transition';
+
+          let typeBadge = '';
+          if (item.type === 'added') {
+            typeBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">+ Добавлен</span>';
+          } else if (item.type === 'removed') {
+            typeBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30">- Удален</span>';
+          } else {
+            typeBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30">~ Изменен</span>';
+          }
+
+          const deltaStr = item.delta !== 0 ? (item.delta > 0 ? `+${formatBytes(item.delta)}` : `-${formatBytes(Math.abs(item.delta))}`) : '--';
+
+          tr.innerHTML = `
+            <td class="py-2 px-3 whitespace-nowrap">${typeBadge}</td>
+            <td class="py-2 px-3 text-slate-800 dark:text-slate-200 break-all text-[11px]">${item.path}</td>
+            <td class="py-2 px-3 text-right font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">${deltaStr}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center py-12 text-rose-500 font-sans"><i class="fa-solid fa-triangle-exclamation mr-2"></i> Ошибка: ${err.message}</td></tr>`;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // ⚡ 4. BORG ACTIONS & LIVE SSE TERMINAL
+    // -------------------------------------------------------------------------
+    function openActionsModal() {
+      const modal = document.getElementById('actionsModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeActionsModal() {
+      const modal = document.getElementById('actionsModal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    function clearTerminal() {
+      const body = document.getElementById('terminalBody');
+      body.innerHTML = '<span class="text-slate-500">Консоль очищена.</span>';
+      document.getElementById('terminalStatusBadge').className = 'text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400';
+      document.getElementById('terminalStatusBadge').innerText = 'Ожидание команды';
+    }
+
+    async function triggerAction(action, repoId = null, archiveName = null) {
+      openActionsModal();
+
+      if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+      }
+
+      const badge = document.getElementById('terminalStatusBadge');
+      const title = document.getElementById('terminalTitle');
+      const body = document.getElementById('terminalBody');
+
+      badge.className = 'text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse';
+      badge.innerText = 'Запуск...';
+      body.innerHTML = `<span class="text-slate-500">> Инициализация задачи [${action}]...</span>\n`;
+
+      try {
+        const res = await fetch('/api/actions/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, repo_id: repoId, archive_name: archiveName })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Не удалось запустить действие');
+        }
+
+        const data = await res.json();
+        title.innerHTML = `<i class="fa-solid fa-terminal mr-1 text-emerald-400"></i>${data.title || action}`;
+
+        if (action === 'refresh_cache') {
+          body.innerHTML = `<div class="text-emerald-400">> ${data.message || 'Сбор данных запущен в фоне'}</div><div class="text-slate-400">> Интерфейс обновится через несколько секунд...</div>`;
+          badge.className = 'text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+          badge.innerText = 'Запущено';
+          setTimeout(loadData, 3000);
+          return;
+        }
+
+        const taskId = data.task_id;
+        body.innerHTML = '';
+
+        currentEventSource = new EventSource(`/api/actions/stream/${taskId}`);
+        currentEventSource.onmessage = function(e) {
+          const msg = JSON.parse(e.data);
+          if (msg.line !== undefined) {
+            const div = document.createElement('div');
+            div.className = 'leading-relaxed break-all';
+            if (msg.line.includes('ERROR') || msg.line.includes('Error') || msg.line.includes('Failed')) {
+              div.className += ' text-rose-400 font-bold';
+            } else if (msg.line.includes('WARNING') || msg.line.includes('Warning')) {
+              div.className += ' text-amber-300';
+            } else if (msg.line.startsWith('$') || msg.line.startsWith('---')) {
+              div.className += ' text-slate-400 font-semibold';
+            }
+            div.textContent = msg.line;
+            body.appendChild(div);
+            const win = document.getElementById('terminalWindow');
+            win.scrollTop = win.scrollHeight;
+          }
+
+          if (msg.status === 'completed') {
+            badge.className = 'text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+            badge.innerText = 'Завершено успешно (код 0)';
+          } else if (msg.status === 'failed') {
+            badge.className = 'text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+            badge.innerText = `Завершено с ошибкой (код ${msg.exit_code})`;
+          } else {
+            badge.className = 'text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 animate-pulse';
+            badge.innerText = 'Выполняется...';
+          }
+
+          if (msg.done) {
+            currentEventSource.close();
+            currentEventSource = null;
+          }
+        };
+
+        currentEventSource.onerror = function() {
+          if (currentEventSource) {
+            currentEventSource.close();
+            currentEventSource = null;
+          }
+        };
+
+      } catch (err) {
+        badge.className = 'text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        badge.innerText = 'Ошибка';
+        body.innerHTML += `<div class="text-rose-400 font-bold">> Ошибка: ${err.message}</div>`;
+      }
     }
 
     function copyCommand(elementId, btn) {

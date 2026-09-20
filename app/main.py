@@ -7,20 +7,24 @@ import os
 import re
 import json
 import time
+import shutil
+import uuid
+import asyncio
 import subprocess
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, BackgroundTasks, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, Query
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 app = FastAPI(
     title="BorgBackup Analytics Dashboard",
     description="Lightweight Web UI & Analytics for BorgBackup repositories",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -94,6 +98,14 @@ def load_repositories_config() -> List[Dict[str, Any]]:
         }
     ]
 
+def get_repo_config(repo_id: str) -> Optional[Dict[str, Any]]:
+    """Find repository configuration by ID."""
+    repos = load_repositories_config()
+    for r in repos:
+        if r.get("id") == repo_id:
+            return r
+    return None
+
 # Global in-memory cache
 GLOBAL_CACHE = {
     "last_updated": 0,
@@ -101,6 +113,10 @@ GLOBAL_CACHE = {
     "data": None
 }
 CACHE_LOCK = threading.Lock()
+
+# Action tasks for live terminal execution
+ACTION_TASKS: Dict[str, Dict[str, Any]] = {}
+ACTION_LOCK = threading.Lock()
 
 def get_borg_env() -> dict:
     """Build environment variables for safe Borg invocation."""
@@ -253,6 +269,90 @@ def parse_log_health() -> Dict[str, Any]:
 
     return health
 
+def calculate_storage_forecast(repos: List[Dict[str, Any]], archives: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Calculate storage consumption runway and capacity forecast."""
+    repo_mount_path = Path("/repos")
+    target_path = repo_mount_path if repo_mount_path.exists() else Path(repos[0]["path"] if repos else ".")
+
+    try:
+        usage = shutil.disk_usage(str(target_path))
+        total_bytes = usage.total
+        used_bytes = usage.used
+        free_bytes = usage.free
+    except Exception:
+        total_bytes = 1000 * (1024**3)
+        used_bytes = sum(r.get("unique_csize", 0) for r in repos)
+        free_bytes = max(0, total_bytes - used_bytes)
+
+    now = datetime.now()
+    cutoff_30d = now.timestamp() - (30 * 86400)
+
+    recent_added_bytes = 0
+    recent_count = 0
+    earliest_time = None
+    latest_time = None
+
+    for a in archives:
+        start_str = a.get("start", "")
+        if start_str:
+            try:
+                dt = datetime.fromisoformat(start_str.split(".")[0])
+                ts = dt.timestamp()
+                if earliest_time is None or ts < earliest_time:
+                    earliest_time = ts
+                if latest_time is None or ts > latest_time:
+                    latest_time = ts
+                if ts >= cutoff_30d:
+                    recent_added_bytes += a.get("deduplicated_size", 0)
+                    recent_count += 1
+            except Exception:
+                pass
+
+    if recent_count > 0 and latest_time:
+        span_days = max(1.0, (latest_time - max(cutoff_30d, earliest_time or cutoff_30d)) / 86400.0)
+        daily_growth_bytes = recent_added_bytes / max(1.0, span_days)
+    elif earliest_time and latest_time and latest_time > earliest_time:
+        total_span_days = max(1.0, (latest_time - earliest_time) / 86400.0)
+        total_added = sum(a.get("deduplicated_size", 0) for a in archives)
+        daily_growth_bytes = total_added / total_span_days
+    else:
+        daily_growth_bytes = max(100 * 1024 * 1024, sum(r.get("unique_csize", 0) for r in repos) / 90.0)
+
+    monthly_growth_bytes = daily_growth_bytes * 30.4
+
+    if daily_growth_bytes > 0:
+        days_until_full = int(free_bytes / daily_growth_bytes)
+        months_until_full = round(days_until_full / 30.4, 1)
+        years_until_full = round(days_until_full / 365.25, 1)
+        try:
+            full_dt = now + timedelta(days=days_until_full)
+            estimated_full_date = full_dt.strftime("%Y-%m-%d")
+        except OverflowError:
+            estimated_full_date = "> 10 лет"
+    else:
+        days_until_full = 99999
+        months_until_full = 999
+        years_until_full = 99
+        estimated_full_date = "Стабильно (без роста)"
+
+    percent_used = round((used_bytes / total_bytes) * 100, 1) if total_bytes > 0 else 0
+    percent_free = round((free_bytes / total_bytes) * 100, 1) if total_bytes > 0 else 0
+
+    return {
+        "total_bytes": total_bytes,
+        "used_bytes": used_bytes,
+        "free_bytes": free_bytes,
+        "percent_used": percent_used,
+        "percent_free": percent_free,
+        "daily_growth_bytes": round(daily_growth_bytes),
+        "monthly_growth_bytes": round(monthly_growth_bytes),
+        "days_until_full": days_until_full,
+        "months_until_full": months_until_full,
+        "years_until_full": years_until_full,
+        "estimated_full_date": estimated_full_date,
+        "health_status": "GOOD" if percent_free > 15 else ("WARNING" if percent_free > 5 else "CRITICAL")
+    }
+
 def collect_all_data() -> Dict[str, Any]:
     """Gather metrics, archives, and health status for all configured repositories."""
     archive_cache = load_archive_cache()
@@ -383,7 +483,8 @@ def collect_all_data() -> Dict[str, Any]:
         },
         "repos": repos_result,
         "archives": all_archives,
-        "health": health
+        "health": health,
+        "storage_forecast": calculate_storage_forecast(repos_result, all_archives)
     }
 
 def refresh_data_task():
@@ -437,3 +538,333 @@ async def get_recovery_guide():
         content = RECOVERY_DOC.read_text(encoding="utf-8", errors="ignore")
         return {"title": "Инструкция по восстановлению", "content": content}
     return {"title": "Инструкция не найдена", "content": "Файл руководства не обнаружен по пути " + str(RECOVERY_DOC)}
+
+
+# -----------------------------------------------------------------------------
+# 📂 FILE EXPLORER & DOWNLOAD API
+# -----------------------------------------------------------------------------
+
+@app.get("/api/archive/files")
+async def get_archive_files(repo_id: str, archive_name: str, folder: Optional[str] = ""):
+    """List files and directories inside a specific archive."""
+    repo_cfg = get_repo_config(repo_id)
+    if not repo_cfg:
+        raise HTTPException(status_code=404, detail="Репозиторий не найден")
+
+    repo_path = repo_cfg["path"]
+    target = f"{repo_path}::{archive_name}"
+
+    cmd = ["borg", "list", "--json-lines", target]
+    if folder:
+        cmd.append(folder)
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            env=get_borg_env()
+        )
+        files = []
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+                files.append({
+                    "path": item.get("path"),
+                    "type": item.get("type", "-"),
+                    "mode": item.get("mode", ""),
+                    "size": item.get("size", 0),
+                    "mtime": item.get("mtime", ""),
+                    "healthy": item.get("healthy", True)
+                })
+            except Exception:
+                continue
+        proc.wait(timeout=60)
+        return {
+            "archive_name": archive_name,
+            "repo_id": repo_id,
+            "repo_name": repo_cfg.get("name", repo_id),
+            "folder": folder,
+            "total_files": len(files),
+            "files": files[:3000]  # Return first 3000 items for responsive UI
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка чтения файлов архива: {e}")
+
+
+@app.get("/api/archive/download")
+async def download_archive_file(repo_id: str, archive_name: str, path: str):
+    """Stream extract a single file directly to user browser."""
+    repo_cfg = get_repo_config(repo_id)
+    if not repo_cfg:
+        raise HTTPException(status_code=404, detail="Репозиторий не найден")
+
+    repo_path = repo_cfg["path"]
+    filename = Path(path).name or "download"
+
+    cmd = ["borg", "extract", "--stdout", f"{repo_path}::{archive_name}", path]
+
+    def iter_file():
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=get_borg_env())
+        try:
+            while True:
+                chunk = proc.stdout.read(64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            proc.stdout.close()
+            proc.wait()
+
+    return StreamingResponse(
+        iter_file(),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+
+# -----------------------------------------------------------------------------
+# 🔍 ARCHIVE DIFF API
+# -----------------------------------------------------------------------------
+
+@app.get("/api/archive/diff")
+async def get_archive_diff(repo_id: str, archive1: str, archive2: str):
+    """Compare two archives and return itemized changes and summary."""
+    repo_cfg = get_repo_config(repo_id)
+    if not repo_cfg:
+        raise HTTPException(status_code=404, detail="Репозиторий не найден")
+
+    repo_path = repo_cfg["path"]
+    cmd = ["borg", "diff", "--json-lines", f"{repo_path}::{archive1}", archive2]
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            env=get_borg_env()
+        )
+        diff_items = []
+        added_count = 0
+        removed_count = 0
+        modified_count = 0
+        net_bytes = 0
+
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                filepath = data.get("path", "")
+                changes = data.get("changes", [])
+
+                primary_type = "modified"
+                size_delta = 0
+                for ch in changes:
+                    ch_type = ch.get("type")
+                    if ch_type in ("added", "deleted"):
+                        primary_type = "added" if ch_type == "added" else "removed"
+                    if "added" in ch and "removed" in ch:
+                        delta = ch["added"] - ch["removed"]
+                        size_delta += delta
+                        net_bytes += delta
+
+                if primary_type == "added":
+                    added_count += 1
+                elif primary_type == "removed":
+                    removed_count += 1
+                else:
+                    modified_count += 1
+
+                diff_items.append({
+                    "path": filepath,
+                    "type": primary_type,
+                    "delta": size_delta,
+                    "changes": changes
+                })
+            except Exception:
+                continue
+
+        proc.wait(timeout=60)
+        return {
+            "repo_id": repo_id,
+            "repo_name": repo_cfg.get("name", repo_id),
+            "archive1": archive1,
+            "archive2": archive2,
+            "summary": {
+                "total_changes": len(diff_items),
+                "added_files": added_count,
+                "removed_files": removed_count,
+                "modified_files": modified_count,
+                "net_bytes": net_bytes
+            },
+            "diff": diff_items[:1500]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка сравнения архивов: {e}")
+
+
+# -----------------------------------------------------------------------------
+# ⚡ ACTIONS RUNNER WITH LIVE SSE TERMINAL OUTPUT
+# -----------------------------------------------------------------------------
+
+class ActionRequest(BaseModel):
+    action: str
+    repo_id: Optional[str] = None
+    archive_name: Optional[str] = None
+
+def run_action_worker(task_id: str, cmd: List[str], env: dict):
+    task = ACTION_TASKS.get(task_id)
+    if not task:
+        return
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            env=env,
+            bufsize=1
+        )
+        task["process"] = proc
+        for line in proc.stdout:
+            with task["lock"]:
+                task["lines"].append(line.rstrip("\r\n"))
+        proc.wait()
+        with task["lock"]:
+            task["exit_code"] = proc.returncode
+            task["status"] = "completed" if proc.returncode == 0 else "failed"
+            task["completed_at"] = time.time()
+    except Exception as e:
+        with task["lock"]:
+            task["lines"].append(f"Ошибка выполнения: {e}")
+            task["status"] = "failed"
+            task["exit_code"] = -1
+            task["completed_at"] = time.time()
+
+@app.post("/api/actions/run")
+async def run_action(req: ActionRequest):
+    """Trigger an interactive action and return task_id for streaming."""
+    action = req.action
+    repo_cfg = get_repo_config(req.repo_id) if req.repo_id else None
+
+    if action == "refresh_cache":
+        threading.Thread(target=refresh_data_task, daemon=True).start()
+        return {"status": "ok", "message": "Сбор актуальных данных запущен в фоне"}
+
+    if not repo_cfg:
+        raise HTTPException(status_code=400, detail="Не указан или не найден репозиторий")
+
+    repo_path = repo_cfg["path"]
+    cmd = []
+    title = ""
+
+    if action == "break_lock":
+        cmd = ["borg", "break-lock", repo_path]
+        title = f"Снятие блокировки ({repo_cfg.get('name')})"
+    elif action == "check_fast":
+        if not req.archive_name:
+            raise HTTPException(status_code=400, detail="Не указано имя архива для быстрой проверки")
+        cmd = ["borg", "check", "-v", "--progress", "--archives-only", "-a", req.archive_name, repo_path]
+        title = f"Быстрая проверка среза {req.archive_name}"
+    elif action == "check_full":
+        cmd = ["borg", "check", "-v", "--progress", repo_path]
+        title = f"Полная проверка репозитория ({repo_cfg.get('name')})"
+    else:
+        raise HTTPException(status_code=400, detail="Неизвестное действие")
+
+    task_id = str(uuid.uuid4())[:8]
+    task_info = {
+        "id": task_id,
+        "action": action,
+        "title": title,
+        "command": " ".join(cmd),
+        "status": "running",
+        "created_at": time.time(),
+        "completed_at": None,
+        "exit_code": None,
+        "lines": [f"$ {' '.join(cmd)}", f"--- Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---"],
+        "lock": threading.Lock()
+    }
+
+    with ACTION_LOCK:
+        if len(ACTION_TASKS) > 10:
+            oldest = min(ACTION_TASKS.keys(), key=lambda k: ACTION_TASKS[k]["created_at"])
+            ACTION_TASKS.pop(oldest, None)
+        ACTION_TASKS[task_id] = task_info
+
+    worker_thread = threading.Thread(
+        target=run_action_worker,
+        args=(task_id, cmd, get_borg_env()),
+        daemon=True
+    )
+    worker_thread.start()
+
+    return {"task_id": task_id, "title": title, "status": "running"}
+
+@app.get("/api/actions/stream/{task_id}")
+async def stream_action(task_id: str):
+    """Server-Sent Events (SSE) stream for terminal output."""
+    task = ACTION_TASKS.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    async def event_generator():
+        sent_index = 0
+        while True:
+            with task["lock"]:
+                current_lines = list(task["lines"])
+                status = task["status"]
+                exit_code = task["exit_code"]
+
+            while sent_index < len(current_lines):
+                line = current_lines[sent_index]
+                sent_index += 1
+                data = json.dumps({"line": line, "status": status})
+                yield f"data: {data}\n\n"
+
+            if status in ("completed", "failed"):
+                end_data = json.dumps({"status": status, "exit_code": exit_code, "done": True})
+                yield f"data: {end_data}\n\n"
+                break
+
+            await asyncio.sleep(0.3)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+@app.get("/api/actions/status/{task_id}")
+async def get_action_status(task_id: str):
+    task = ACTION_TASKS.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    with task["lock"]:
+        return {
+            "id": task["id"],
+            "title": task["title"],
+            "status": task["status"],
+            "exit_code": task["exit_code"],
+            "lines_count": len(task["lines"])
+        }
+
