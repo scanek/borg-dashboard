@@ -101,6 +101,11 @@
           <span>Сравнить срезы</span>
         </button>
 
+        <button onclick="openJobsModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition">
+          <i class="fa-solid fa-list-check"></i>
+          <span>Задачи бэкапа</span>
+        </button>
+
         <button onclick="openActionsModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
           <i class="fa-solid fa-bolt-lightning"></i>
           <span>Действия Borg</span>
@@ -752,6 +757,227 @@
       <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between shrink-0 text-xs">
         <button onclick="clearTerminal()" class="px-3 py-1 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition">Очистить вывод</button>
         <button onclick="closeActionsModal()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-semibold transition">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: JOBS LIST & MANAGER -->
+  <div id="jobsModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-4xl w-full max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 p-4 shrink-0 bg-slate-50 dark:bg-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-list-check"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-slate-900 dark:text-white text-sm">Диспетчер задач резервного копирования</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Настройка источников, расписания и запуск задач BorgBackup</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="openJobConfigModal(null)" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition flex items-center gap-1.5">
+            <i class="fa-solid fa-plus text-xs"></i><span>Новая задача</span>
+          </button>
+          <button onclick="closeJobsModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Jobs list container -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3.5" id="jobsListContainer">
+        <div class="text-center py-12 text-slate-400">
+          <i class="fa-solid fa-spinner fa-spin mr-2"></i> Загрузка задач...
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex justify-end shrink-0 text-xs">
+        <button onclick="closeJobsModal()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-semibold transition">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: JOB CONFIGURATOR & SERVER BROWSER -->
+  <div id="jobConfigModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-3xl w-full max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 p-4 shrink-0 bg-slate-50 dark:bg-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm">
+            <i class="fa-solid fa-sliders"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-slate-900 dark:text-white text-sm" id="jobConfigTitle">Создание задачи бэкапа</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Выберите каталоги на сервере, правила ротации и расписание</p>
+          </div>
+        </div>
+        <button onclick="closeJobConfigModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Form Body -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-5 text-xs">
+        <input type="hidden" id="jobConfigId" value="">
+
+        <!-- Section 1: Basic Info -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div class="sm:col-span-1">
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Название задачи *</label>
+            <input type="text" id="jobFormName" placeholder="например, Бэкап БД" class="w-full bg-slate-50 dark:bg-surface-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Целевой репозиторий *</label>
+            <select id="jobFormRepo" class="w-full bg-slate-50 dark:bg-surface-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white focus:outline-none">
+              <option value="docker">Docker & Контейнеры (/repos/borg_backup)</option>
+              <option value="immich">Immich Фото & База (/repos/immich-borg)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Префикс архива *</label>
+            <input type="text" id="jobFormPrefix" placeholder="например, custom_backup" class="w-full bg-slate-50 dark:bg-surface-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white font-mono focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Section 2: Sources & Server Directory Browser -->
+        <div class="space-y-2.5 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-800/20">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <i class="fa-solid fa-folder-tree text-indigo-500"></i> Что бэкапить (Источники)
+            </span>
+            <span class="text-[11px] text-slate-500">Серверный проводник OMV</span>
+          </div>
+
+          <!-- Selected Sources Chips -->
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1.5">Выбранные каталоги для включения в срез:</label>
+            <div id="jobSelectedSources" class="min-h-[42px] p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-wrap gap-1.5 items-center">
+              <span class="text-slate-400 italic text-[11px]">Каталоги пока не выбраны. Выберите ниже в проводнике или введите путь вручную.</span>
+            </div>
+          </div>
+
+          <!-- Manual input fallback -->
+          <div class="flex items-center gap-2 pt-1">
+            <input type="text" id="jobManualSourceInput" placeholder="Или укажите путь вручную: /srv/... или /volume1/..." class="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-900 dark:text-white font-mono text-xs focus:outline-none">
+            <button type="button" onclick="addManualSource()" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-semibold transition">
+              Добавить
+            </button>
+          </div>
+
+          <!-- Embedded File Browser -->
+          <div class="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900 mt-2">
+            <!-- Browser Header & Breadcrumbs -->
+            <div class="p-2.5 bg-slate-100 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+              <div class="flex items-center gap-1.5 overflow-x-auto custom-scrollbar font-mono text-[11px]" id="serverBreadcrumbs">
+                <span class="text-slate-400">/srv</span>
+              </div>
+              <button type="button" onclick="browseServerUp()" class="px-2.5 py-1 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[11px] font-sans border border-slate-200 dark:border-slate-600 transition flex items-center gap-1 shrink-0">
+                <i class="fa-solid fa-arrow-up"></i> Вверх
+              </button>
+            </div>
+
+            <!-- Folder list -->
+            <div class="max-h-48 overflow-y-auto custom-scrollbar divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]" id="serverFolderList">
+              <div class="p-4 text-center text-slate-400 font-sans text-xs">Загрузка структуры сервера...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Exclusions -->
+        <div class="space-y-2 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-800/20">
+          <span class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+            <i class="fa-solid fa-filter-circle-xmark text-amber-500"></i> Исключения (Excludes)
+          </span>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400">Быстрые шаблоны для пропуска лишних временных файлов:</p>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="excTmp" value="*.tmp" class="rounded border-slate-300 dark:border-slate-700 text-indigo-600">
+              <span class="text-slate-700 dark:text-slate-300">*.tmp</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="excSock" value="*.sock" class="rounded border-slate-300 dark:border-slate-700 text-indigo-600" checked>
+              <span class="text-slate-700 dark:text-slate-300">*.sock</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="excCache" value="*cache*" class="rounded border-slate-300 dark:border-slate-700 text-indigo-600" checked>
+              <span class="text-slate-700 dark:text-slate-300">Кэш (*cache*)</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="excLog" value="*.log" class="rounded border-slate-300 dark:border-slate-700 text-indigo-600">
+              <span class="text-slate-700 dark:text-slate-300">*.log</span>
+            </label>
+          </div>
+          <div class="pt-1">
+            <label class="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Дополнительные шаблоны (через запятую или пробел):</label>
+            <input type="text" id="jobFormCustomExcludes" placeholder="например, thumbs, encoded-video, node_modules" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-900 dark:text-white font-mono text-xs focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Section 4: Compression, Retention & Schedule -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Compression & Prune -->
+          <div class="space-y-3 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-800/20">
+            <span class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <i class="fa-solid fa-box-archive text-purple-500"></i> Сжатие и Ротация
+            </span>
+            <div>
+              <label class="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Алгоритм сжатия</label>
+              <select id="jobFormCompression" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-900 dark:text-white focus:outline-none">
+                <option value="auto,zstd,6">auto,zstd,6 (Рекомендуется — баланс скорости и сжатия)</option>
+                <option value="lz4">lz4 (Сверхбыстрое, минимальная нагрузка на CPU)</option>
+                <option value="auto,zlib,9">auto,zlib,9 (Максимальное сжатие)</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[10px] text-slate-500 mb-1">Дней (daily)</label>
+                <input type="number" id="jobFormKeepDaily" value="7" min="0" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-900 dark:text-white text-center">
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-500 mb-1">Недель (weekly)</label>
+                <input type="number" id="jobFormKeepWeekly" value="4" min="0" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-900 dark:text-white text-center">
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-500 mb-1">Месяцев (monthly)</label>
+                <input type="number" id="jobFormKeepMonthly" value="3" min="0" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-slate-900 dark:text-white text-center">
+              </div>
+            </div>
+          </div>
+
+          <!-- Schedule -->
+          <div class="space-y-3 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-800/20">
+            <span class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <i class="fa-regular fa-clock text-blue-500"></i> Расписание автозапуска
+            </span>
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="jobFormScheduleEnabled" class="rounded border-slate-300 text-indigo-600" checked>
+              <label for="jobFormScheduleEnabled" class="font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">Включить выполнение по расписанию</label>
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Частота</label>
+              <select id="jobFormFrequency" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-900 dark:text-white focus:outline-none">
+                <option value="daily">Ежедневно</option>
+                <option value="weekly">Еженедельно (по воскресеньям)</option>
+                <option value="manual">Только вручную</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-600 dark:text-slate-400 mb-1">Время запуска</label>
+              <input type="time" id="jobFormScheduleTime" value="02:00" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-slate-900 dark:text-white focus:outline-none">
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between shrink-0 text-xs">
+        <button type="button" onclick="closeJobConfigModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-semibold transition">Отмена</button>
+        <button type="button" onclick="saveJobConfig()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-sm transition flex items-center gap-1.5">
+          <i class="fa-solid fa-floppy-disk"></i><span>Сохранить задачу</span>
+        </button>
       </div>
     </div>
   </div>
@@ -1567,6 +1793,489 @@
           } else {
             badge.className = 'text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 animate-pulse';
             badge.innerText = 'Выполняется...';
+          }
+
+          if (msg.done) {
+            currentEventSource.close();
+            currentEventSource = null;
+          }
+        };
+
+        currentEventSource.onerror = function() {
+          if (currentEventSource) {
+            currentEventSource.close();
+            currentEventSource = null;
+          }
+        };
+
+      } catch (err) {
+        badge.className = 'text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        badge.innerText = 'Ошибка';
+        body.innerHTML += `<div class="text-rose-400 font-bold">> Ошибка: ${err.message}</div>`;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 🗂️ 5. JOBS MANAGER & INTERACTIVE CONFIGURATOR LOGIC
+    // -------------------------------------------------------------------------
+    let currentJobs = [];
+    let selectedJobSources = [];
+    let currentBrowsePath = '/srv';
+
+    async function openJobsModal() {
+      const modal = document.getElementById('jobsModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      await loadJobsList();
+    }
+
+    function closeJobsModal() {
+      const modal = document.getElementById('jobsModal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    async function loadJobsList() {
+      const container = document.getElementById('jobsListContainer');
+      container.innerHTML = `<div class="text-center py-12 text-slate-400 font-sans"><i class="fa-solid fa-spinner fa-spin mr-2 text-emerald-500"></i> Загрузка задач бэкапа...</div>`;
+      try {
+        const res = await fetch('/api/jobs');
+        const data = await res.json();
+        currentJobs = data.jobs || [];
+        renderJobsList(currentJobs);
+      } catch (err) {
+        container.innerHTML = `<div class="p-4 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs">Ошибка загрузки задач: ${err.message}</div>`;
+      }
+    }
+
+    function renderJobsList(jobs) {
+      const container = document.getElementById('jobsListContainer');
+      container.innerHTML = '';
+
+      if (!jobs || jobs.length === 0) {
+        container.innerHTML = `<div class="text-center py-12 text-slate-400 font-sans">Задачи бэкапа пока не настроены. Нажмите «Новая задача» выше.</div>`;
+        return;
+      }
+
+      jobs.forEach(job => {
+        const card = document.createElement('div');
+        card.className = 'bg-white dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3';
+
+        const isSys = job.is_system;
+        const sysBadge = isSys
+          ? '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">Системная OMV</span>'
+          : '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20">Пользовательская</span>';
+
+        const repoBadge = job.repo_id === 'docker'
+          ? '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-blue-100 text-blue-800 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">Репозиторий Docker</span>'
+          : '<span class="px-2 py-0.5 rounded text-[10px] font-sans font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Репозиторий Immich</span>';
+
+        const sched = job.schedule || {};
+        const schedText = sched.enabled
+          ? (sched.frequency === 'daily' ? `Ежедневно в ${sched.time || '00:00'}` : (sched.frequency === 'weekly' ? `Еженедельно в ${sched.time || '00:00'}` : 'Только вручную'))
+          : 'Отключено';
+
+        const sourcesList = (job.sources || []).map(s => `<code class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[11px]">${s}</code>`).join(' ');
+
+        let lastRunHtml = '<span class="text-slate-400">Еще не запускалась из дашборда</span>';
+        if (job.last_run) {
+          const lr = job.last_run;
+          const lrStatus = lr.status === 'completed'
+            ? '<span class="text-emerald-600 dark:text-emerald-400 font-semibold"><i class="fa-solid fa-check mr-1"></i>Успешно</span>'
+            : '<span class="text-rose-600 dark:text-rose-400 font-semibold"><i class="fa-solid fa-xmark mr-1"></i>Ошибка</span>';
+          lastRunHtml = `${lrStatus} (${lr.timestamp || ''}, срез: ${lr.archive_name || '--'}, ${lr.duration || 0} с)`;
+        }
+
+        const deleteBtn = !isSys
+          ? `<button onclick="deleteBackupJob('${job.id}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-sans border border-rose-200 dark:border-rose-500/20 transition" title="Удалить задачу"><i class="fa-regular fa-trash-can"></i></button>`
+          : '';
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h4 class="font-bold text-slate-900 dark:text-white text-sm">${job.name}</h4>
+              ${sysBadge}
+              ${repoBadge}
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button onclick="runBackupJob('${job.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition flex items-center gap-1.5" title="Запустить бэкап немедленно">
+                <i class="fa-solid fa-play text-[10px]"></i><span>Запустить сейчас</span>
+              </button>
+              <button onclick="openJobConfigModal('${job.id}')" class="px-3 py-1.5 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 shadow-sm transition flex items-center gap-1">
+                <i class="fa-solid fa-pen-to-square"></i><span>Правка</span>
+              </button>
+              ${deleteBtn}
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1 border-t border-slate-100 dark:border-slate-800">
+            <div>
+              <span class="text-slate-500 dark:text-slate-400">Источники (${job.sources ? job.sources.length : 0}): </span>
+              <div class="mt-1 flex flex-wrap gap-1">${sourcesList}</div>
+            </div>
+            <div class="space-y-1">
+              <div>
+                <span class="text-slate-500 dark:text-slate-400">Расписание: </span>
+                <span class="font-semibold text-slate-800 dark:text-slate-200">${schedText}</span>
+              </div>
+              <div>
+                <span class="text-slate-500 dark:text-slate-400">Сжатие: </span>
+                <span class="font-mono text-slate-700 dark:text-slate-300">${job.compression || 'auto,zstd,6'}</span>
+                <span class="text-slate-400 mx-1">•</span>
+                <span class="text-slate-500 dark:text-slate-400">Ротация: </span>
+                <span class="text-slate-700 dark:text-slate-300">D:${job.retention?.keep_daily || 7} W:${job.retention?.keep_weekly || 4} M:${job.retention?.keep_monthly || 3}</span>
+              </div>
+              <div>
+                <span class="text-slate-500 dark:text-slate-400">Последний запуск: </span>
+                <span class="text-slate-700 dark:text-slate-300">${lastRunHtml}</span>
+              </div>
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // ⚙️ JOB CONFIGURATOR & SERVER DIRECTORY BROWSER
+    // -------------------------------------------------------------------------
+    function openJobConfigModal(jobId) {
+      document.getElementById('jobConfigId').value = jobId || '';
+      document.getElementById('jobManualSourceInput').value = '';
+
+      if (jobId) {
+        const job = currentJobs.find(j => j.id === jobId);
+        if (job) {
+          document.getElementById('jobConfigTitle').innerText = `Редактирование: ${job.name}`;
+          document.getElementById('jobFormName').value = job.name || '';
+          document.getElementById('jobFormRepo').value = job.repo_id || 'docker';
+          document.getElementById('jobFormPrefix').value = job.archive_prefix || '';
+          selectedJobSources = [...(job.sources || [])];
+
+          document.getElementById('jobFormCompression').value = job.compression || 'auto,zstd,6';
+          document.getElementById('jobFormKeepDaily').value = job.retention?.keep_daily ?? 7;
+          document.getElementById('jobFormKeepWeekly').value = job.retention?.keep_weekly ?? 4;
+          document.getElementById('jobFormKeepMonthly').value = job.retention?.keep_monthly ?? 3;
+
+          const sched = job.schedule || {};
+          document.getElementById('jobFormScheduleEnabled').checked = sched.enabled ?? true;
+          document.getElementById('jobFormFrequency').value = sched.frequency || 'daily';
+          document.getElementById('jobFormScheduleTime').value = sched.time || '02:00';
+
+          const excludes = job.exclude_patterns || [];
+          document.getElementById('excTmp').checked = excludes.includes('*.tmp');
+          document.getElementById('excSock').checked = excludes.includes('*.sock');
+          document.getElementById('excCache').checked = excludes.includes('*cache*');
+          document.getElementById('excLog').checked = excludes.includes('*.log');
+          const customExc = excludes.filter(e => !['*.tmp', '*.sock', '*cache*', '*.log'].includes(e));
+          document.getElementById('jobFormCustomExcludes').value = customExc.join(', ');
+        }
+      } else {
+        document.getElementById('jobConfigTitle').innerText = 'Создание новой задачи бэкапа';
+        document.getElementById('jobFormName').value = '';
+        document.getElementById('jobFormRepo').value = 'docker';
+        document.getElementById('jobFormPrefix').value = '';
+        selectedJobSources = [];
+
+        document.getElementById('jobFormCompression').value = 'auto,zstd,6';
+        document.getElementById('jobFormKeepDaily').value = 7;
+        document.getElementById('jobFormKeepWeekly').value = 4;
+        document.getElementById('jobFormKeepMonthly').value = 3;
+
+        document.getElementById('jobFormScheduleEnabled').checked = true;
+        document.getElementById('jobFormFrequency').value = 'daily';
+        document.getElementById('jobFormScheduleTime').value = '02:00';
+
+        document.getElementById('excTmp').checked = false;
+        document.getElementById('excSock').checked = true;
+        document.getElementById('excCache').checked = true;
+        document.getElementById('excLog').checked = false;
+        document.getElementById('jobFormCustomExcludes').value = '';
+      }
+
+      renderSelectedSources();
+      browseServerPath('/srv');
+
+      const modal = document.getElementById('jobConfigModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeJobConfigModal() {
+      const modal = document.getElementById('jobConfigModal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    function renderSelectedSources() {
+      const container = document.getElementById('jobSelectedSources');
+      container.innerHTML = '';
+
+      if (selectedJobSources.length === 0) {
+        container.innerHTML = `<span class="text-slate-400 italic text-[11px]">Каталоги пока не выбраны. Выберите ниже в проводнике или введите путь вручную.</span>`;
+        return;
+      }
+
+      selectedJobSources.forEach(src => {
+        const chip = document.createElement('span');
+        chip.className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/20 font-mono text-[11px] shadow-sm';
+        chip.innerHTML = `
+          <span>${src}</span>
+          <button type="button" onclick="removeSourcePath('${src}')" class="text-indigo-400 hover:text-indigo-600 dark:hover:text-white ml-0.5">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        `;
+        container.appendChild(chip);
+      });
+    }
+
+    function addSourcePath(path) {
+      if (!path) return;
+      if (!selectedJobSources.includes(path)) {
+        selectedJobSources.push(path);
+        renderSelectedSources();
+      }
+    }
+
+    function removeSourcePath(path) {
+      selectedJobSources = selectedJobSources.filter(p => p !== path);
+      renderSelectedSources();
+    }
+
+    function addManualSource() {
+      const input = document.getElementById('jobManualSourceInput');
+      const val = input.value.trim();
+      if (val) {
+        addSourcePath(val);
+        input.value = '';
+      }
+    }
+
+    async function browseServerPath(path) {
+      currentBrowsePath = path;
+      const listEl = document.getElementById('serverFolderList');
+      listEl.innerHTML = `<div class="p-4 text-center text-slate-400 font-sans text-xs"><i class="fa-solid fa-spinner fa-spin mr-2 text-indigo-500"></i> Чтение ${path}...</div>`;
+
+      try {
+        const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(path)}`);
+        if (!res.ok) throw new Error('Не удалось прочитать директорию');
+        const data = await res.json();
+        renderServerBrowser(data);
+      } catch (err) {
+        listEl.innerHTML = `<div class="p-4 text-center text-rose-500 font-sans text-xs">Ошибка чтения директории: ${err.message}</div>`;
+      }
+    }
+
+    function renderServerBrowser(data) {
+      // Breadcrumbs
+      const bContainer = document.getElementById('serverBreadcrumbs');
+      bContainer.innerHTML = '';
+      (data.breadcrumbs || []).forEach((b, idx) => {
+        if (idx > 0) {
+          const sep = document.createElement('span');
+          sep.className = 'text-slate-300 dark:text-slate-600';
+          sep.innerText = '/';
+          bContainer.appendChild(sep);
+        }
+        const bBtn = document.createElement('button');
+        bBtn.type = 'button';
+        bBtn.className = 'hover:text-indigo-600 dark:hover:text-indigo-400 transition underline underline-offset-2';
+        bBtn.innerText = b.name;
+        bBtn.onclick = () => browseServerPath(b.path);
+        bContainer.appendChild(bBtn);
+      });
+
+      // Folder list
+      const listEl = document.getElementById('serverFolderList');
+      listEl.innerHTML = '';
+
+      const items = data.items || [];
+      if (items.length === 0) {
+        listEl.innerHTML = `<div class="p-4 text-center text-slate-400 font-sans text-xs">Директория пуста</div>`;
+        return;
+      }
+
+      items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'p-2 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 transition gap-2';
+
+        if (item.is_dir) {
+          row.innerHTML = `
+            <div class="flex items-center gap-2 flex-1 cursor-pointer overflow-hidden text-slate-800 dark:text-slate-200" onclick="browseServerPath('${item.path}')">
+              <i class="fa-regular fa-folder text-amber-500 text-sm shrink-0"></i>
+              <span class="truncate font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition" title="${item.path}">${item.name}</span>
+            </div>
+            <button type="button" onclick="addSourcePath('${item.path}')" class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 rounded text-[10px] font-sans font-semibold border border-indigo-200 dark:border-indigo-500/20 transition flex items-center gap-1 shrink-0">
+              <i class="fa-solid fa-plus text-[9px]"></i><span>Выбрать</span>
+            </button>
+          `;
+        } else {
+          row.innerHTML = `
+            <div class="flex items-center gap-2 flex-1 overflow-hidden text-slate-500 dark:text-slate-400">
+              <i class="fa-regular fa-file text-slate-400 text-sm shrink-0"></i>
+              <span class="truncate" title="${item.path}">${item.name}</span>
+              <span class="text-[10px] text-slate-400 shrink-0 font-sans">(${formatBytes(item.size)})</span>
+            </div>
+            <button type="button" onclick="addSourcePath('${item.path}')" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-sans font-semibold transition flex items-center gap-1 shrink-0">
+              <i class="fa-solid fa-plus text-[9px]"></i><span>Выбрать</span>
+            </button>
+          `;
+        }
+        listEl.appendChild(row);
+      });
+    }
+
+    function browseServerUp() {
+      if (!currentBrowsePath || currentBrowsePath === '/' || currentBrowsePath === '/srv') return;
+      const parts = currentBrowsePath.split('/').filter(Boolean);
+      parts.pop();
+      const parent = '/' + parts.join('/');
+      browseServerPath(parent || '/srv');
+    }
+
+    async function saveJobConfig() {
+      const jobId = document.getElementById('jobConfigId').value;
+      const name = document.getElementById('jobFormName').value.trim();
+      const repoId = document.getElementById('jobFormRepo').value;
+      let prefix = document.getElementById('jobFormPrefix').value.trim();
+
+      if (!name) {
+        alert('Пожалуйста, укажите название задачи.');
+        return;
+      }
+      if (selectedJobSources.length === 0) {
+        alert('Пожалуйста, выберите хотя бы одну папку или файл в качестве источника бэкапа.');
+        return;
+      }
+      if (!prefix) {
+        prefix = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      }
+
+      // Collect excludes
+      const excludes = [];
+      ['excTmp', 'excSock', 'excCache', 'excLog'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.checked) excludes.push(el.value);
+      });
+      const customExc = document.getElementById('jobFormCustomExcludes').value.split(',').map(s => s.trim()).filter(Boolean);
+      excludes.push(...customExc);
+
+      const jobPayload = {
+        name: name,
+        repo_id: repoId,
+        archive_prefix: prefix,
+        sources: selectedJobSources,
+        exclude_patterns: excludes,
+        compression: document.getElementById('jobFormCompression').value,
+        retention: {
+          keep_daily: parseInt(document.getElementById('jobFormKeepDaily').value) || 7,
+          keep_weekly: parseInt(document.getElementById('jobFormKeepWeekly').value) || 4,
+          keep_monthly: parseInt(document.getElementById('jobFormKeepMonthly').value) || 3
+        },
+        schedule: {
+          enabled: document.getElementById('jobFormScheduleEnabled').checked,
+          frequency: document.getElementById('jobFormFrequency').value,
+          time: document.getElementById('jobFormScheduleTime').value || '02:00'
+        }
+      };
+
+      try {
+        let res;
+        if (jobId) {
+          res = await fetch(`/api/jobs/${jobId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(jobPayload)
+          });
+        } else {
+          res = await fetch('/api/jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(jobPayload)
+          });
+        }
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Не удалось сохранить задачу');
+        }
+
+        closeJobConfigModal();
+        await loadJobsList();
+      } catch (err) {
+        alert(`Ошибка сохранения: ${err.message}`);
+      }
+    }
+
+    async function deleteBackupJob(jobId) {
+      if (!confirm('Вы уверены, что хотите удалить эту задачу бэкапа?')) return;
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Ошибка удаления');
+        }
+        await loadJobsList();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function runBackupJob(jobId) {
+      closeJobsModal();
+      openActionsModal();
+
+      if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+      }
+
+      const badge = document.getElementById('terminalStatusBadge');
+      const title = document.getElementById('terminalTitle');
+      const body = document.getElementById('terminalBody');
+
+      badge.className = 'text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse';
+      badge.innerText = 'Запуск задачи...';
+      body.innerHTML = `<span class="text-slate-500">> Инициализация запуска задачи [${jobId}]...</span>\n`;
+
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/run`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Не удалось запустить задачу');
+        }
+        const data = await res.json();
+        const taskId = data.task_id;
+        body.innerHTML = '';
+
+        currentEventSource = new EventSource(`/api/actions/stream/${taskId}`);
+        currentEventSource.onmessage = function(e) {
+          const msg = JSON.parse(e.data);
+          if (msg.line !== undefined) {
+            const div = document.createElement('div');
+            div.className = 'leading-relaxed break-all';
+            if (msg.line.includes('ERROR') || msg.line.includes('Error') || msg.line.includes('CRITICAL')) {
+              div.className += ' text-rose-400 font-bold';
+            } else if (msg.line.includes('WARNING') || msg.line.includes('Warning')) {
+              div.className += ' text-amber-300';
+            } else if (msg.line.startsWith('$') || msg.line.startsWith('---') || msg.line.startsWith('===')) {
+              div.className += ' text-slate-400 font-semibold';
+            }
+            div.textContent = msg.line;
+            body.appendChild(div);
+            const win = document.getElementById('terminalWindow');
+            win.scrollTop = win.scrollHeight;
+          }
+
+          if (msg.status === 'completed') {
+            badge.className = 'text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+            badge.innerText = 'Бэкап успешно создан (код 0)';
+          } else if (msg.status === 'failed') {
+            badge.className = 'text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+            badge.innerText = `Бэкап завершен с ошибкой (код ${msg.exit_code})`;
+          } else {
+            badge.className = 'text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 animate-pulse';
+            badge.innerText = 'Выполняется бэкап...';
           }
 
           if (msg.done) {

@@ -872,3 +872,506 @@ async def get_action_status(task_id: str):
             "lines_count": len(task["lines"])
         }
 
+
+# -----------------------------------------------------------------------------
+# 📁 5. SERVER DIRECTORY / FILESYSTEM BROWSER
+# -----------------------------------------------------------------------------
+
+@app.get("/api/fs/browse")
+async def browse_filesystem(path: Optional[str] = None):
+    """Safely browse server directories for selecting backup sources."""
+    default_root = "/srv" if Path("/srv").exists() else ("." if not Path("/volume1").exists() else "/volume1")
+    requested_path = (path or default_root).strip()
+
+    try:
+        target = Path(requested_path).resolve()
+    except Exception:
+        target = Path(default_root).resolve()
+
+    # Allowed roots whitelist
+    allowed_roots = [Path("/srv"), Path("/volume1"), Path("/repos"), Path("/app/data"), Path("/volume1/script")]
+    # Local dev fallback
+    if not any(r.exists() for r in allowed_roots):
+        allowed_roots.append(BASE_DIR.resolve())
+
+    is_allowed = False
+    for root in allowed_roots:
+        if root.exists():
+            try:
+                target.relative_to(root.resolve())
+                is_allowed = True
+                break
+            except ValueError:
+                if target == root.resolve():
+                    is_allowed = True
+                    break
+
+    if not is_allowed:
+        for r in allowed_roots:
+            if r.exists():
+                target = r.resolve()
+                break
+
+    if not target.exists() or not target.is_dir():
+        target = Path(default_root).resolve()
+        if not target.exists() or not target.is_dir():
+            target = Path(".").resolve()
+
+    items = []
+    try:
+        entries = sorted(target.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower()))
+        for entry in entries:
+            try:
+                is_dir = entry.is_dir()
+                stat = entry.stat()
+                items.append({
+                    "name": entry.name,
+                    "path": str(entry).replace("\\", "/"),
+                    "is_dir": is_dir,
+                    "size": stat.st_size if not is_dir else 0,
+                    "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "readable": os.access(entry, os.R_OK)
+                })
+            except (PermissionError, OSError):
+                continue
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Нет прав для чтения директории")
+
+    # Build breadcrumbs
+    breadcrumbs = []
+    curr = target
+    parts = []
+    while curr != curr.parent:
+        parts.append({"name": curr.name or "/", "path": str(curr).replace("\\", "/")})
+        curr = curr.parent
+    if curr.name == "" or curr.name == "/":
+        parts.append({"name": "Корень (/)", "path": "/"})
+    breadcrumbs = list(reversed(parts))
+
+    parent_path = str(target.parent).replace("\\", "/") if target.parent != target else None
+
+    return {
+        "current_path": str(target).replace("\\", "/"),
+        "parent_path": parent_path,
+        "breadcrumbs": breadcrumbs,
+        "items": items[:400]
+    }
+
+
+# -----------------------------------------------------------------------------
+# ⚙️ 6. INTERACTIVE BACKUP JOBS CONFIGURATOR & SCHEDULER
+# -----------------------------------------------------------------------------
+
+JOBS_FILE = DATA_DIR / "jobs.json"
+JOBS_LOCK = threading.Lock()
+
+class BackupJobRetention(BaseModel):
+    keep_daily: int = 7
+    keep_weekly: int = 4
+    keep_monthly: int = 3
+
+class BackupJobSchedule(BaseModel):
+    enabled: bool = True
+    frequency: str = "daily"  # "daily", "weekly", "manual"
+    time: str = "02:00"       # "HH:MM"
+    days: List[int] = [1, 2, 3, 4, 5, 6, 7]  # 1=Mon, 7=Sun
+
+class BackupJobModel(BaseModel):
+    id: Optional[str] = None
+    name: str
+    repo_id: str
+    archive_prefix: str
+    sources: List[str]
+    exclude_patterns: List[str] = []
+    compression: str = "auto,zstd,6"
+    retention: BackupJobRetention = BackupJobRetention()
+    schedule: BackupJobSchedule = BackupJobSchedule()
+    pre_backup_cmd: Optional[str] = None
+    post_backup_cmd: Optional[str] = None
+
+def get_default_jobs() -> List[Dict[str, Any]]:
+    return [
+        {
+            "id": "job-docker-sys",
+            "name": "Docker & Контейнеры (Системный OMV)",
+            "repo_id": "docker",
+            "archive_prefix": "docker_dir",
+            "sources": ["/srv/dev-disk-by-uuid-0ec712e9-1748-4fd2-af21-4ccfc9791cd1/docker"],
+            "exclude_patterns": ["*.sock", "*.tmp"],
+            "compression": "auto,zlib,9",
+            "retention": {
+                "keep_daily": 7,
+                "keep_weekly": 4,
+                "keep_monthly": 3
+            },
+            "schedule": {
+                "enabled": True,
+                "frequency": "daily",
+                "time": "01:00",
+                "days": [1, 2, 3, 4, 5, 6, 7]
+            },
+            "is_system": True,
+            "created_at": "2026-09-01T00:00:00",
+            "last_run": None
+        },
+        {
+            "id": "job-immich-sys",
+            "name": "Immich Фотографии & База Данных",
+            "repo_id": "immich",
+            "archive_prefix": "immich",
+            "sources": ["/volume1/immich"],
+            "exclude_patterns": ["/volume1/immich/thumbs", "/volume1/immich/encoded-video"],
+            "compression": "zstd,6",
+            "retention": {
+                "keep_daily": 14,
+                "keep_weekly": 4,
+                "keep_monthly": 6
+            },
+            "schedule": {
+                "enabled": True,
+                "frequency": "daily",
+                "time": "00:30",
+                "days": [1, 2, 3, 4, 5, 6, 7]
+            },
+            "is_system": True,
+            "created_at": "2026-09-01T00:00:00",
+            "last_run": None
+        }
+    ]
+
+def load_jobs() -> List[Dict[str, Any]]:
+    if not JOBS_FILE.exists():
+        defaults = get_default_jobs()
+        save_jobs(defaults)
+        return defaults
+    try:
+        with open(JOBS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[WARN] Ошибка чтения jobs.json: {e}")
+        return get_default_jobs()
+
+def save_jobs(jobs: List[Dict[str, Any]]):
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(JOBS_FILE, "w", encoding="utf-8") as f:
+            json.dump(jobs, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[ERROR] Ошибка записи jobs.json: {e}")
+
+@app.get("/api/jobs")
+async def get_jobs():
+    """Return all configured backup jobs."""
+    with JOBS_LOCK:
+        return {"jobs": load_jobs()}
+
+@app.post("/api/jobs")
+async def create_job(job: BackupJobModel):
+    """Create a new backup job."""
+    if not job.sources:
+        raise HTTPException(status_code=400, detail="Не указаны источники для резервного копирования")
+
+    new_id = f"job-{str(uuid.uuid4())[:8]}"
+    job_dict = job.dict()
+    job_dict["id"] = new_id
+    job_dict["is_system"] = False
+    job_dict["created_at"] = datetime.now().isoformat()
+    job_dict["last_run"] = None
+
+    with JOBS_LOCK:
+        jobs = load_jobs()
+        jobs.append(job_dict)
+        save_jobs(jobs)
+
+    return {"status": "ok", "job": job_dict}
+
+@app.put("/api/jobs/{job_id}")
+async def update_job(job_id: str, job: BackupJobModel):
+    """Update an existing backup job."""
+    with JOBS_LOCK:
+        jobs = load_jobs()
+        idx = next((i for i, j in enumerate(jobs) if j["id"] == job_id), None)
+        if idx is None:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+
+        old_job = jobs[idx]
+        updated = job.dict()
+        updated["id"] = job_id
+        updated["is_system"] = old_job.get("is_system", False)
+        updated["created_at"] = old_job.get("created_at", datetime.now().isoformat())
+        updated["last_run"] = old_job.get("last_run")
+
+        jobs[idx] = updated
+        save_jobs(jobs)
+
+    return {"status": "ok", "job": updated}
+
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(job_id: str):
+    """Delete a custom backup job."""
+    with JOBS_LOCK:
+        jobs = load_jobs()
+        target_job = next((j for j in jobs if j["id"] == job_id), None)
+        if not target_job:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+        if target_job.get("is_system"):
+            raise HTTPException(status_code=400, detail="Системную задачу OMV нельзя удалить")
+
+        jobs = [j for j in jobs if j["id"] != job_id]
+        save_jobs(jobs)
+
+    return {"status": "ok", "message": "Задача удалена"}
+
+def execute_job_worker(task_id: str, job: Dict[str, Any]):
+    """Execute complete backup workflow: create -> prune -> compact."""
+    task = ACTION_TASKS.get(task_id)
+    if not task:
+        return
+
+    repo_cfg = get_repo_config(job["repo_id"])
+    if not repo_cfg:
+        with task["lock"]:
+            task["lines"].append(f"[ERROR] Репозиторий {job['repo_id']} не найден!")
+            task["status"] = "failed"
+            task["exit_code"] = 1
+        return
+
+    repo_path = repo_cfg["path"]
+    prefix = job.get("archive_prefix", "backup").strip()
+    sources = job.get("sources", [])
+    excludes = job.get("exclude_patterns", [])
+    compression = job.get("compression", "auto,zstd,6").strip()
+    retention = job.get("retention", {})
+    archive_name = f"{prefix}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+
+    env = get_borg_env()
+    start_time = time.time()
+    success = True
+
+    try:
+        # Step 1: Pre-backup command (if specified)
+        pre_cmd = job.get("pre_backup_cmd")
+        if pre_cmd and pre_cmd.strip():
+            with task["lock"]:
+                task["lines"].append(f"--- [Шаг 0/3] Предварительная команда: {pre_cmd} ---")
+            p = subprocess.Popen(pre_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore")
+            for l in p.stdout:
+                with task["lock"]:
+                    task["lines"].append(f"[pre] {l.rstrip()}")
+            p.wait()
+
+        # Step 2: Borg Create
+        cmd_create = [
+            "borg", "create",
+            "--verbose",
+            "--stats",
+            "--show-rc",
+            "--progress",
+            "--compression", compression,
+            "--exclude-caches"
+        ]
+        for exc in excludes:
+            if exc.strip():
+                cmd_create.extend(["--exclude", exc.strip()])
+
+        cmd_create.append(f"{repo_path}::{archive_name}")
+        cmd_create.extend(sources)
+
+        with task["lock"]:
+            task["lines"].append(f"--- [Шаг 1/3] Создание снимка: {archive_name} ---")
+            task["lines"].append(f"$ {' '.join(cmd_create)}")
+
+        proc_create = subprocess.Popen(
+            cmd_create,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            env=env,
+            bufsize=1
+        )
+        task["process"] = proc_create
+        for line in proc_create.stdout:
+            with task["lock"]:
+                task["lines"].append(line.rstrip("\r\n"))
+        proc_create.wait()
+
+        if proc_create.returncode != 0:
+            success = False
+            with task["lock"]:
+                task["lines"].append(f"[ERROR] Ошибка при создании снимка Borg (код {proc_create.returncode})")
+
+        # Step 3: Borg Prune (only if create succeeded)
+        if success and retention:
+            kd = retention.get("keep_daily", 7)
+            kw = retention.get("keep_weekly", 4)
+            km = retention.get("keep_monthly", 3)
+            cmd_prune = [
+                "borg", "prune",
+                "--list",
+                "--show-rc",
+                "--glob-archives", f"{prefix}-*",
+                f"--keep-daily={kd}",
+                f"--keep-weekly={kw}",
+                f"--keep-monthly={km}",
+                repo_path
+            ]
+            with task["lock"]:
+                task["lines"].append(f"\n--- [Шаг 2/3] Ротация старых копий (keep: daily={kd}, weekly={kw}, monthly={km}) ---")
+                task["lines"].append(f"$ {' '.join(cmd_prune)}")
+
+            proc_prune = subprocess.Popen(cmd_prune, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore", env=env)
+            for line in proc_prune.stdout:
+                with task["lock"]:
+                    task["lines"].append(line.rstrip("\r\n"))
+            proc_prune.wait()
+
+        # Step 4: Borg Compact
+        if success:
+            cmd_compact = ["borg", "compact", repo_path]
+            with task["lock"]:
+                task["lines"].append(f"\n--- [Шаг 3/3] Оптимизация хранилища (compact) ---")
+                task["lines"].append(f"$ {' '.join(cmd_compact)}")
+
+            proc_compact = subprocess.Popen(cmd_compact, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore", env=env)
+            for line in proc_compact.stdout:
+                with task["lock"]:
+                    task["lines"].append(line.rstrip("\r\n"))
+            proc_compact.wait()
+
+        # Step 5: Post-backup command (if specified)
+        post_cmd = job.get("post_backup_cmd")
+        if post_cmd and post_cmd.strip():
+            with task["lock"]:
+                task["lines"].append(f"\n--- [Пост-шаг] Команда после бэкапа: {post_cmd} ---")
+            p = subprocess.Popen(post_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore")
+            for l in p.stdout:
+                with task["lock"]:
+                    task["lines"].append(f"[post] {l.rstrip()}")
+            p.wait()
+
+        duration = time.time() - start_time
+        status_str = "completed" if success else "failed"
+
+        with task["lock"]:
+            task["status"] = status_str
+            task["exit_code"] = 0 if success else 1
+            task["completed_at"] = time.time()
+            task["lines"].append(f"\n--- Завершено: {status_str} (время: {int(duration)} сек) ---")
+
+        # Record last run in jobs.json
+        with JOBS_LOCK:
+            jobs = load_jobs()
+            j = next((x for x in jobs if x["id"] == job["id"]), None)
+            if j:
+                j["last_run"] = {
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "status": status_str,
+                    "archive_name": archive_name,
+                    "duration": int(duration)
+                }
+                save_jobs(jobs)
+
+        # Trigger dashboard cache refresh in background
+        threading.Thread(target=refresh_data_task, daemon=True).start()
+
+    except Exception as e:
+        with task["lock"]:
+            task["lines"].append(f"\n[CRITICAL ERROR] Исключение при выполнении бэкапа: {e}")
+            task["status"] = "failed"
+            task["exit_code"] = -1
+            task["completed_at"] = time.time()
+
+def start_job_execution(job_id: str) -> str:
+    """Register and start an interactive backup job."""
+    with JOBS_LOCK:
+        jobs = load_jobs()
+        job = next((j for j in jobs if j["id"] == job_id), None)
+        if not job:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    task_id = str(uuid.uuid4())[:8]
+    title = f"Бэкап: {job['name']}"
+
+    task_info = {
+        "id": task_id,
+        "action": "backup_job",
+        "title": title,
+        "command": f"borg backup job {job['name']}",
+        "status": "running",
+        "created_at": time.time(),
+        "completed_at": None,
+        "exit_code": None,
+        "lines": [
+            f"=== Запуск задачи резервного копирования: {job['name']} ===",
+            f"Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Репозиторий: {job['repo_id']}",
+            f"Источники: {', '.join(job.get('sources', []))}",
+            "============================================================"
+        ],
+        "lock": threading.Lock()
+    }
+
+    with ACTION_LOCK:
+        if len(ACTION_TASKS) > 10:
+            oldest = min(ACTION_TASKS.keys(), key=lambda k: ACTION_TASKS[k]["created_at"])
+            ACTION_TASKS.pop(oldest, None)
+        ACTION_TASKS[task_id] = task_info
+
+    worker = threading.Thread(target=execute_job_worker, args=(task_id, job), daemon=True)
+    worker.start()
+    return task_id
+
+@app.post("/api/jobs/{job_id}/run")
+async def run_backup_job_api(job_id: str):
+    """Trigger immediate interactive backup execution."""
+    task_id = start_job_execution(job_id)
+    return {"status": "running", "task_id": task_id}
+
+# Background Scheduler Thread
+def background_scheduler():
+    """Background scheduler evaluating jobs every 30 seconds."""
+    last_minute = ""
+    while True:
+        try:
+            time.sleep(30)
+            now = datetime.now()
+            curr_min = now.strftime("%Y-%m-%d %H:%M")
+            curr_time = now.strftime("%H:%M")
+            curr_dow = now.isoweekday()
+
+            if curr_min == last_minute:
+                continue
+
+            with JOBS_LOCK:
+                jobs = load_jobs()
+
+            for job in jobs:
+                if job.get("is_system"):
+                    continue  # System jobs already managed by OMV cron
+                sched = job.get("schedule", {})
+                if not sched.get("enabled", False):
+                    continue
+
+                freq = sched.get("frequency", "daily")
+                target_time = sched.get("time", "")
+
+                if target_time != curr_time:
+                    continue
+
+                if freq == "weekly" and curr_dow not in sched.get("days", [1]):
+                    continue
+
+                print(f"[SCHEDULER] Автозапуск задачи: {job.get('name')} ({job.get('id')})")
+                last_minute = curr_min
+                start_job_execution(job["id"])
+
+        except Exception as e:
+            print(f"[SCHEDULER ERROR] {e}")
+            time.sleep(30)
+
+# Start background scheduler daemon
+threading.Thread(target=background_scheduler, daemon=True).start()
+
+

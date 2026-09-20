@@ -26,7 +26,10 @@ services:
       - /volume1/logs:/logs:ro
       # Руководство по восстановлению (read-only, опционально)
       - /volume1/script/ИНСТРУКЦИЯ_ПО_ВОССТАНОВЛЕНИЮ.md:/app/docs/RECOVERY.md:ro
-      # Сохранение кэша метаданных между перезапусками
+      # Доступ к дискам хоста для проводника и резервного копирования (read-only)
+      - /srv:/srv:ro
+      - /volume1:/volume1:ro
+      # Сохранение кэша метаданных и конфигураций задач между перезапусками
       - ./data:/app/data
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8099/api/health')"]
