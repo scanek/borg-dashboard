@@ -236,6 +236,48 @@
 
 ---
 
+## 🛠️ Установка BorgBackup на хост и инициализация репозитория
+
+> [!NOTE]
+> Внутри Docker-образа дашборда **BorgBackup уже установлен**. Если вы планируете управлять бэкапами через веб-интерфейс дашборда, устанавливать Borg на сам хост необязательно!
+> Однако, для работы в консоли сервера, запуска внешних cron-скриптов или быстрого FUSE-монтирования архивов рекомендуется установить Borg на хосте.
+
+### 1. Установка Borg на сервере
+* **Debian / Ubuntu / OpenMediaVault:**
+  ```bash
+  sudo apt update && sudo apt install -y borgbackup
+  ```
+* **Arch Linux / Manjaro:**
+  ```bash
+  sudo pacman -S borg
+  ```
+* **RedHat / AlmaLinux / Rocky Linux:**
+  ```bash
+  sudo dnf install -y epel-release && sudo dnf install -y borgbackup
+  ```
+* **Alpine Linux:**
+  ```bash
+  sudo apk add borgbackup
+  ```
+* **Готовый автономный бинарник (для любых дистрибутивов):**
+  ```bash
+  sudo wget https://github.com/borgbackup/borg/releases/latest/download/borg-linux64 -O /usr/local/bin/borg
+  sudo chmod 755 /usr/local/bin/borg
+  ```
+
+### 2. Инициализация первого репозитория
+Если вы настраиваете Borg впервые и у вас ещё нет репозиториев:
+* **Без пароля (рекомендуется для домашних серверов и локальной сети):**
+  ```bash
+  borg init --encryption=none /путь/к/диску/borg_backup
+  ```
+* **С шифрованием паролем (режим `repokey` для удаленных серверов):**
+  ```bash
+  borg init --encryption=repokey /путь/к/диску/borg_backup
+  ```
+
+---
+
 ## 📦 Быстрый старт (Docker Compose)
 
 ### 1. Клонирование репозитория

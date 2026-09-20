@@ -16,6 +16,15 @@ BorgBackup хранит данные в виде дедуплицированн�
 
 ## 🛠️ 2. Пошаговые команды восстановления
 
+### Шаг 0. Установка BorgBackup на новую систему (при восстановлении с нуля)
+Если вы разворачиваете сервер с нуля после полной замены оборудования:
+* **Debian / Ubuntu / OpenMediaVault:** `sudo apt update && sudo apt install -y borgbackup`
+* **Arch Linux:** `sudo pacman -S borg`
+* **Любой Linux (автономный бинарник без зависимостей):**
+  ```bash
+  sudo wget https://github.com/borgbackup/borg/releases/latest/download/borg-linux64 -O /usr/local/bin/borg && sudo chmod 755 /usr/local/bin/borg
+  ```
+
 ### Шаг 1. Проверка доступности репозитория
 Перед началом восстановления убедитесь, что репозиторий доступен и не заблокирован:
 ```bash
