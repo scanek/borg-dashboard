@@ -63,11 +63,15 @@ def load_repositories_config() -> List[Dict[str, Any]]:
             print(f"Error parsing BORG_REPOS env var: {e}")
 
     # 3. Default fallback setup
+    base_host = os.getenv("BORG_REPOS_HOST_PATH", "").strip().rstrip("/")
+    default_host1 = f"{base_host}/borg_backup" if base_host else "/srv/backups/borg_backup"
+    default_host2 = f"{base_host}/backups/immich-borg" if base_host else "/srv/backups/immich-borg"
+
     repo1_path = os.getenv("BORG_REPO_1_PATH", "/repos/borg_backup")
-    repo1_host = os.getenv("BORG_REPO_1_HOST_PATH", "/srv/backups/borg_backup")
+    repo1_host = os.getenv("BORG_REPO_1_HOST_PATH", default_host1)
     
     repo2_path = os.getenv("BORG_REPO_2_PATH", "/repos/backups/immich-borg")
-    repo2_host = os.getenv("BORG_REPO_2_HOST_PATH", "/srv/backups/immich-borg")
+    repo2_host = os.getenv("BORG_REPO_2_HOST_PATH", default_host2)
 
     return [
         {

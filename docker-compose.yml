@@ -10,13 +10,14 @@ services:
       - BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK=yes
       - BORG_RELOCATED_REPO_ACCESS_IS_OK=yes
       - BORG_CACHE_DIR=/tmp/borg_cache
-      # Опционально: можно переопределить пути к репозиториям и логам
+      - BORG_REPOS_HOST_PATH=${BORG_REPOS_HOST_PATH:-}
+      - BORG_REPO_1_HOST_PATH=${BORG_REPO_1_HOST_PATH:-}
+      - BORG_REPO_2_HOST_PATH=${BORG_REPO_2_HOST_PATH:-}
+      # Опционально: можно переопределить имена и источники
       # - BORG_REPO_1_NAME=Docker & Контейнеры
-      # - BORG_REPO_1_PATH=/repos/borg_backup
-      # - BORG_REPO_1_HOST_PATH=/srv/dev-disk-by-uuid-xxx/borg_backup
+      # - BORG_REPO_1_SOURCE=/volume1/docker
       # - BORG_REPO_2_NAME=Immich Фото & База
-      # - BORG_REPO_2_PATH=/repos/backups/immich-borg
-      # - BORG_REPO_2_HOST_PATH=/srv/dev-disk-by-uuid-xxx/backups/immich-borg
+      # - BORG_REPO_2_SOURCE=/volume1/immich
     volumes:
       # Путь к локальным репозиториям Borg на хосте (настраивается через .env)
       # (Borg требует право на запись для временных lock-файлов при чтении)
