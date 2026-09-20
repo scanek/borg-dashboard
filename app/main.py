@@ -841,7 +841,13 @@ def run_dr_test_worker(task_id: str, repo_id: str, archive_name: Optional[str], 
             if not archives:
                 raise ValueError("В репозитории нет доступных срезов для проверки")
             archives.sort(key=lambda a: a.get("start", a.get("time", "")), reverse=True)
-            archive_name = archives[0]["name"]
+            
+            # Prefer regular scheduled backups over test/temporary ones
+            reg_archives = [a for a in archives if not any(t in a.get("name", "").lower() for t in ["test", "dry_run", "tmp", "demo"])]
+            if reg_archives:
+                archive_name = reg_archives[0]["name"]
+            else:
+                archive_name = archives[0]["name"]
 
         target_archive = f"{repo_path}::{archive_name}"
 

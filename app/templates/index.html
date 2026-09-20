@@ -307,7 +307,7 @@
             <p class="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 truncate" id="badgeDrDetails">Проверка извлечения данных</p>
             <div class="flex items-center justify-between mt-1">
               <p class="text-[10px] text-slate-400 dark:text-slate-500"><i class="fa-regular fa-clock mr-1"></i><span id="badgeDrTime">--</span></p>
-              <button onclick="triggerAction('dr_test', 'docker')" class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 transition flex items-center gap-1" title="Запустить проверку распаковки тестового файла в песочницу">
+              <button onclick="openDrTestModal()" class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 transition flex items-center gap-1" title="Открыть меню запуска Disaster Recovery теста">
                 <i class="fa-solid fa-play text-[9px]"></i><span>Тест</span>
               </button>
             </div>
@@ -671,6 +671,53 @@
 
       <div class="pt-2 flex justify-end">
         <button onclick="closeRestoreModal()" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: DISASTER RECOVERY TEST LAUNCHER -->
+  <div id="drTestModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-lg w-full rounded-2xl p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center text-base">
+            <i class="fa-solid fa-vial-circle-check"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-slate-900 dark:text-white text-sm">Disaster Recovery (DR) Тест</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Симуляция восстановления с декомпрессией и сверкой SHA-256</p>
+          </div>
+        </div>
+        <button onclick="closeDrTestModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <p class="text-slate-600 dark:text-slate-300">
+          Выберите целевой репозиторий и срез для проведения безопасного теста распаковки в изолированную песочницу:
+        </p>
+
+        <!-- Quick selection cards for each repo -->
+        <div class="space-y-2" id="drRepoCardsContainer">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="pt-2 border-t border-slate-100 dark:border-slate-800">
+          <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Или выбрать произвольный срез из списка:</label>
+          <div class="flex gap-2">
+            <select id="drCustomArchiveSelect" class="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <!-- Options populated by JS -->
+            </select>
+            <button onclick="runCustomDrTest()" class="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold shadow-sm transition flex items-center gap-1.5 shrink-0">
+              <i class="fa-solid fa-play text-[10px]"></i><span>Тест</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button onclick="closeDrTestModal()" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition">Отмена</button>
       </div>
     </div>
   </div>
@@ -2225,6 +2272,77 @@
       const archName = currentModalArch.name;
       closeRestoreModal();
       triggerAction(action, repoId, archName);
+    }
+
+    function openDrTestModal() {
+      const container = document.getElementById('drRepoCardsContainer');
+      const select = document.getElementById('drCustomArchiveSelect');
+      if (!container || !select) return;
+
+      const repos = (globalData && globalData.repos) ? globalData.repos : [];
+      const archives = (globalData && globalData.archives) ? globalData.archives : [];
+
+      let html = '';
+      repos.forEach(repo => {
+        const repoArchives = archives.filter(a => a.repo_id === repo.id);
+        const regularArch = repoArchives.find(a => !['test', 'dry_run', 'tmp', 'demo'].some(t => a.name.toLowerCase().includes(t))) || repoArchives[0];
+        
+        const isDocker = repo.id === 'docker';
+        const icon = isDocker ? 'fa-brands fa-docker text-blue-500' : 'fa-solid fa-camera-retro text-emerald-500';
+        const archName = regularArch ? regularArch.name : '--';
+        const archDate = regularArch ? formatDate(regularArch.start) : '--';
+        const archSize = regularArch ? formatBytes(regularArch.original_size) : '--';
+
+        html += `
+          <div class="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 hover:border-amber-500/40 transition">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-sm shrink-0">
+                <i class="${icon}"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-bold text-slate-900 dark:text-white text-xs truncate">${repo.name}</span>
+                  <span class="text-[10px] text-slate-400 font-mono">(${archDate})</span>
+                </div>
+                <div class="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">
+                  Срез: <span class="text-slate-700 dark:text-slate-200 font-semibold">${archName}</span> • ${archSize}
+                </div>
+              </div>
+            </div>
+            <button onclick="closeDrTestModal(); triggerAction('dr_test', '${repo.id}', '${archName}')" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shadow-sm transition flex items-center gap-1 shrink-0">
+              <i class="fa-solid fa-play text-[9px]"></i><span>Тест</span>
+            </button>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+
+      // Populate custom archives select
+      select.innerHTML = '';
+      archives.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = `${a.repo_id}::${a.name}`;
+        opt.innerText = `[${a.repo_name || a.repo_id}] ${a.name} (${formatDate(a.start)})`;
+        select.appendChild(opt);
+      });
+
+      const modal = document.getElementById('drTestModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeDrTestModal() {
+      const modal = document.getElementById('drTestModal');
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
+    }
+
+    function runCustomDrTest() {
+      const select = document.getElementById('drCustomArchiveSelect');
+      if (!select || !select.value) return;
+      const [repoId, archName] = select.value.split('::');
+      closeDrTestModal();
+      triggerAction('dr_test', repoId, archName);
     }
 
     // -------------------------------------------------------------------------
