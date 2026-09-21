@@ -13,11 +13,15 @@ import asyncio
 import subprocess
 import threading
 import hashlib
+import secrets
+import base64
+from collections import deque
+from urllib.parse import quote
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, Query
+from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -27,6 +31,45 @@ app = FastAPI(
     description="Lightweight Web UI & Analytics for BorgBackup repositories",
     version="2.0.0"
 )
+
+# Security & Shell Hook Policy
+BORG_AUTH_USER = os.getenv("BORG_AUTH_USER", "").strip()
+BORG_AUTH_PASSWORD = os.getenv("BORG_AUTH_PASSWORD", "").strip()
+BORG_ALLOW_SHELL_HOOKS = os.getenv("BORG_ALLOW_SHELL_HOOKS", "false").lower() in ("true", "1", "yes")
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    # Always allow health check without authentication
+    if request.url.path == "/api/health":
+        return await call_next(request)
+
+    if BORG_AUTH_USER and BORG_AUTH_PASSWORD:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Basic "):
+            return Response(
+                status_code=401,
+                content="Требуется авторизация",
+                headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
+            )
+        try:
+            encoded = auth_header.split(" ", 1)[1]
+            decoded = base64.b64decode(encoded).decode("utf-8")
+            username, password = decoded.split(":", 1)
+            user_ok = secrets.compare_digest(username, BORG_AUTH_USER)
+            pass_ok = secrets.compare_digest(password, BORG_AUTH_PASSWORD)
+            if not (user_ok and pass_ok):
+                return Response(
+                    status_code=401,
+                    content="Неверный логин или пароль",
+                    headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
+                )
+        except Exception:
+            return Response(
+                status_code=401,
+                content="Неверный формат авторизации",
+                headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
+            )
+    return await call_next(request)
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -44,6 +87,30 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 LOGS_DIR = Path(os.getenv("BORG_LOGS_DIR", "/logs" if Path("/logs").exists() else "/volume1/logs"))
 RECOVERY_DOC = Path(os.getenv("BORG_GUIDE_PATH", "/app/docs/RECOVERY.md" if Path("/app/docs/RECOVERY.md").exists() else "/volume1/script/ИНСТРУКЦИЯ_ПО_ВОССТАНОВЛЕНИЮ.md"))
+
+# Repository-level locks to prevent simultaneous Borg operations on the same repository
+REPO_LOCKS: Dict[str, threading.Lock] = {}
+REPO_LOCKS_MUTEX = threading.Lock()
+
+def get_repo_lock(repo_id: str) -> threading.Lock:
+    """Retrieve or create a thread lock for a given repository."""
+    with REPO_LOCKS_MUTEX:
+        if repo_id not in REPO_LOCKS:
+            REPO_LOCKS[repo_id] = threading.Lock()
+        return REPO_LOCKS[repo_id]
+
+def atomic_save_json(filepath: Path, data: Any):
+    """Atomically write JSON data using a temporary file to avoid corruption on power failure."""
+    try:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        temp_file = filepath.with_suffix(f".tmp_{os.getpid()}_{uuid.uuid4().hex[:6]}")
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_file, filepath)
+    except Exception as e:
+        print(f"[ERROR] Не удалось атомарно сохранить {filepath}: {e}")
 
 def format_bytes(b: int) -> str:
     if not b or b <= 0:
@@ -91,11 +158,7 @@ def load_dr_test_result() -> Dict[str, Any]:
         }
 
 def save_dr_test_result(res: Dict[str, Any]):
-    try:
-        with open(DR_TEST_FILE, "w", encoding="utf-8") as f:
-            json.dump(res, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Error saving DR test result: {e}")
+    atomic_save_json(DR_TEST_FILE, res)
 
 def load_repositories_config() -> List[Dict[str, Any]]:
     """Load repositories configuration from config file, env var, or defaults."""
@@ -192,11 +255,7 @@ def load_archive_cache() -> dict:
 
 def save_archive_cache(cache: dict):
     """Save persistent archive metadata cache to avoid re-fetching immutable archives."""
-    try:
-        with open(ARCHIVE_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(cache, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Error saving archive cache: {e}")
+    atomic_save_json(ARCHIVE_CACHE_FILE, cache)
 
 def run_borg_command(args: List[str]) -> Any:
     """Execute a Borg CLI command and return parsed JSON."""
@@ -576,9 +635,11 @@ async def get_status():
     if GLOBAL_CACHE["data"] is None or (now - GLOBAL_CACHE["last_updated"] > 300 and not GLOBAL_CACHE["is_updating"]):
         threading.Thread(target=refresh_data_task, daemon=True).start()
         if GLOBAL_CACHE["data"] is None:
-            return collect_all_data()
+            return await asyncio.to_thread(collect_all_data)
 
-    return GLOBAL_CACHE["data"] or collect_all_data()
+    if GLOBAL_CACHE["data"] is not None:
+        return GLOBAL_CACHE["data"]
+    return await asyncio.to_thread(collect_all_data)
 
 @app.post("/api/refresh")
 async def trigger_refresh(background_tasks: BackgroundTasks):
@@ -611,7 +672,7 @@ async def get_archive_files(repo_id: str, archive_name: str, folder: Optional[st
     repo_path = repo_cfg["path"]
     target = f"{repo_path}::{archive_name}"
 
-    cmd = ["borg", "list", "--json-lines", target]
+    cmd = ["borg", "list", "--json-lines", "--", target]
     if folder:
         cmd.append(folder)
 
@@ -619,7 +680,7 @@ async def get_archive_files(repo_id: str, archive_name: str, folder: Optional[st
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="ignore",
@@ -667,12 +728,15 @@ async def download_archive_file(repo_id: str, archive_name: str, path: Optional[
         raise HTTPException(status_code=404, detail="Репозиторий не найден")
 
     repo_path = repo_cfg["path"]
-    filename = Path(target_path).name or "download"
+    raw_filename = Path(target_path).name or "download"
+    clean_filename = re.sub(r'[\r\n"\\/]', '_', raw_filename)
+    ascii_filename = clean_filename.encode("ascii", "ignore").decode("ascii") or "download"
+    encoded_filename = quote(clean_filename)
 
-    cmd = ["borg", "extract", "--stdout", f"{repo_path}::{archive_name}", target_path]
+    cmd = ["borg", "extract", "--stdout", "--", f"{repo_path}::{archive_name}", target_path]
 
     def iter_file():
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=get_borg_env())
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=get_borg_env())
         try:
             while True:
                 chunk = proc.stdout.read(64 * 1024)
@@ -687,7 +751,7 @@ async def download_archive_file(repo_id: str, archive_name: str, path: Optional[
         iter_file(),
         media_type="application/octet-stream",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"'
+            "Content-Disposition": f'attachment; filename="{ascii_filename}"; filename*=UTF-8\'\'{encoded_filename}'
         }
     )
 
@@ -704,13 +768,13 @@ async def get_archive_diff(repo_id: str, archive1: str, archive2: str):
         raise HTTPException(status_code=404, detail="Репозиторий не найден")
 
     repo_path = repo_cfg["path"]
-    cmd = ["borg", "diff", "--json-lines", f"{repo_path}::{archive1}", archive2]
+    cmd = ["borg", "diff", "--json-lines", "--", f"{repo_path}::{archive1}", archive2]
 
     try:
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="ignore",
@@ -786,9 +850,11 @@ class ActionRequest(BaseModel):
     repo_id: Optional[str] = None
     archive_name: Optional[str] = None
 
-def run_action_worker(task_id: str, cmd: List[str], env: dict):
+def run_action_worker(task_id: str, cmd: List[str], env: dict, repo_lock: Optional[threading.Lock] = None):
     task = ACTION_TASKS.get(task_id)
     if not task:
+        if repo_lock and repo_lock.locked():
+            repo_lock.release()
         return
     try:
         proc = subprocess.Popen(
@@ -816,11 +882,16 @@ def run_action_worker(task_id: str, cmd: List[str], env: dict):
             task["status"] = "failed"
             task["exit_code"] = -1
             task["completed_at"] = time.time()
+    finally:
+        if repo_lock and repo_lock.locked():
+            repo_lock.release()
 
-def run_dr_test_worker(task_id: str, repo_id: str, archive_name: Optional[str], env: dict):
+def run_dr_test_worker(task_id: str, repo_id: str, archive_name: Optional[str], env: dict, repo_lock: Optional[threading.Lock] = None):
     global GLOBAL_CACHE
     task = ACTION_TASKS.get(task_id)
     if not task:
+        if repo_lock and repo_lock.locked():
+            repo_lock.release()
         return
 
     start_time = time.time()
@@ -1026,6 +1097,9 @@ def run_dr_test_worker(task_id: str, repo_id: str, archive_name: Optional[str], 
         with CACHE_LOCK:
             if GLOBAL_CACHE.get("data") and "health" in GLOBAL_CACHE["data"]:
                 GLOBAL_CACHE["data"]["health"]["dr_test"] = load_dr_test_result()
+    finally:
+        if repo_lock and repo_lock.locked():
+            repo_lock.release()
 
 @app.post("/api/actions/run")
 async def run_action(req: ActionRequest):
@@ -1040,6 +1114,13 @@ async def run_action(req: ActionRequest):
     if not repo_cfg:
         raise HTTPException(status_code=400, detail="Не указан или не найден репозиторий")
 
+    repo_lock = get_repo_lock(req.repo_id)
+    if not repo_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Репозиторий '{repo_cfg.get('name', req.repo_id)}' в данный момент выполняет другую операцию. Дождитесь её завершения."
+        )
+
     repo_path = repo_cfg["path"]
     cmd = []
     title = ""
@@ -1049,6 +1130,7 @@ async def run_action(req: ActionRequest):
         title = f"Снятие блокировки ({repo_cfg.get('name')})"
     elif action == "check_fast":
         if not req.archive_name:
+            repo_lock.release()
             raise HTTPException(status_code=400, detail="Не указано имя архива для быстрой проверки")
         cmd = ["borg", "check", "-v", "--progress", "--archives-only", "-a", req.archive_name, repo_path]
         title = f"Быстрая проверка среза {req.archive_name}"
@@ -1059,6 +1141,7 @@ async def run_action(req: ActionRequest):
         target_name = req.archive_name or "последний срез"
         title = f"DR-тест восстановления: {target_name} ({repo_cfg.get('name')})"
     else:
+        repo_lock.release()
         raise HTTPException(status_code=400, detail="Неизвестное действие")
 
     task_id = str(uuid.uuid4())[:8]
@@ -1071,7 +1154,7 @@ async def run_action(req: ActionRequest):
         "created_at": time.time(),
         "completed_at": None,
         "exit_code": None,
-        "lines": [f"$ {' '.join(cmd)}" if cmd else f"$ borg dr-test {repo_path}::{req.archive_name or 'latest'}", f"--- Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---"],
+        "lines": deque([f"$ {' '.join(cmd)}" if cmd else f"$ borg dr-test {repo_path}::{req.archive_name or 'latest'}", f"--- Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---"], maxlen=2000),
         "lock": threading.Lock()
     }
 
@@ -1084,13 +1167,13 @@ async def run_action(req: ActionRequest):
     if action == "dr_test":
         worker_thread = threading.Thread(
             target=run_dr_test_worker,
-            args=(task_id, req.repo_id, req.archive_name, get_borg_env()),
+            args=(task_id, req.repo_id, req.archive_name, get_borg_env(), repo_lock),
             daemon=True
         )
     else:
         worker_thread = threading.Thread(
             target=run_action_worker,
-            args=(task_id, cmd, get_borg_env()),
+            args=(task_id, cmd, get_borg_env(), repo_lock),
             daemon=True
         )
     worker_thread.start()
@@ -1098,7 +1181,7 @@ async def run_action(req: ActionRequest):
     return {"task_id": task_id, "title": title, "status": "running"}
 
 @app.get("/api/actions/stream/{task_id}")
-async def stream_action(task_id: str):
+async def stream_action(task_id: str, request: Request):
     """Server-Sent Events (SSE) stream for terminal output."""
     task = ACTION_TASKS.get(task_id)
     if not task:
@@ -1107,6 +1190,9 @@ async def stream_action(task_id: str):
     async def event_generator():
         sent_index = 0
         while True:
+            if await request.is_disconnected():
+                break
+
             with task["lock"]:
                 current_lines = list(task["lines"])
                 status = task["status"]
@@ -1157,17 +1243,6 @@ async def get_action_status(task_id: str):
 @app.get("/api/fs/browse")
 async def browse_filesystem(path: Optional[str] = None):
     """Safely browse server directories for selecting backup sources."""
-    # Detect first existing root among common server mount paths
-    candidate_roots = [Path("/srv"), Path("/volume1"), Path("/mnt"), Path("/data"), Path("/storage"), Path("/home"), Path("/repos")]
-    existing_root = next((str(r) for r in candidate_roots if r.exists()), ".")
-    default_root = existing_root
-    requested_path = (path or default_root).strip()
-
-    try:
-        target = Path(requested_path).resolve()
-    except Exception:
-        target = Path(default_root).resolve()
-
     # Allowed roots whitelist (common server paths + custom via BORG_ALLOWED_ROOTS)
     allowed_roots = [
         Path("/srv"), Path("/volume1"), Path("/repos"), Path("/app/data"),
@@ -1183,28 +1258,32 @@ async def browse_filesystem(path: Optional[str] = None):
     if not any(r.exists() for r in allowed_roots):
         allowed_roots.append(BASE_DIR.resolve())
 
-    is_allowed = False
-    for root in allowed_roots:
-        if root.exists():
-            try:
-                target.relative_to(root.resolve())
-                is_allowed = True
-                break
-            except ValueError:
-                if target == root.resolve():
+    if not path or not path.strip():
+        # Pick the first existing allowed root
+        target = next((r.resolve() for r in allowed_roots if r.exists()), BASE_DIR.resolve())
+    else:
+        try:
+            target = Path(path.strip()).resolve()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Некорректный путь")
+
+        is_allowed = False
+        for root in allowed_roots:
+            if root.exists():
+                try:
+                    target.relative_to(root.resolve())
                     is_allowed = True
                     break
+                except ValueError:
+                    if target == root.resolve():
+                        is_allowed = True
+                        break
 
-    if not is_allowed:
-        for r in allowed_roots:
-            if r.exists():
-                target = r.resolve()
-                break
+        if not is_allowed:
+            raise HTTPException(status_code=403, detail="Доступ к указанной директории запрещён политикой безопасности")
 
     if not target.exists() or not target.is_dir():
-        target = Path(default_root).resolve()
-        if not target.exists() or not target.is_dir():
-            target = Path(".").resolve()
+        raise HTTPException(status_code=404, detail="Указанная директория не найдена")
 
     items = []
     try:
@@ -1341,12 +1420,7 @@ def load_jobs() -> List[Dict[str, Any]]:
         return get_default_jobs()
 
 def save_jobs(jobs: List[Dict[str, Any]]):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        with open(JOBS_FILE, "w", encoding="utf-8") as f:
-            json.dump(jobs, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"[ERROR] Ошибка записи jobs.json: {e}")
+    atomic_save_json(JOBS_FILE, jobs)
 
 @app.get("/api/jobs")
 async def get_jobs():
@@ -1411,10 +1485,12 @@ async def delete_job(job_id: str):
 
     return {"status": "ok", "message": "Задача удалена"}
 
-def execute_job_worker(task_id: str, job: Dict[str, Any]):
+def execute_job_worker(task_id: str, job: Dict[str, Any], repo_lock: Optional[threading.Lock] = None):
     """Execute complete backup workflow: create -> prune -> compact."""
     task = ACTION_TASKS.get(task_id)
     if not task:
+        if repo_lock and repo_lock.locked():
+            repo_lock.release()
         return
 
     repo_cfg = get_repo_config(job["repo_id"])
@@ -1423,6 +1499,8 @@ def execute_job_worker(task_id: str, job: Dict[str, Any]):
             task["lines"].append(f"[ERROR] Репозиторий {job['repo_id']} не найден!")
             task["status"] = "failed"
             task["exit_code"] = 1
+        if repo_lock and repo_lock.locked():
+            repo_lock.release()
         return
 
     repo_path = repo_cfg["path"]
@@ -1441,13 +1519,17 @@ def execute_job_worker(task_id: str, job: Dict[str, Any]):
         # Step 1: Pre-backup command (if specified)
         pre_cmd = job.get("pre_backup_cmd")
         if pre_cmd and pre_cmd.strip():
-            with task["lock"]:
-                task["lines"].append(f"--- [Шаг 0/3] Предварительная команда: {pre_cmd} ---")
-            p = subprocess.Popen(pre_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore")
-            for l in p.stdout:
+            if not BORG_ALLOW_SHELL_HOOKS:
                 with task["lock"]:
-                    task["lines"].append(f"[pre] {l.rstrip()}")
-            p.wait()
+                    task["lines"].append("⚠️ [SECURITY] pre_backup_cmd пропущена: выполнение шелл-команд отключено политикой безопасности (BORG_ALLOW_SHELL_HOOKS=false).")
+            else:
+                with task["lock"]:
+                    task["lines"].append(f"--- [Шаг 0/3] Предварительная команда: {pre_cmd} ---")
+                p = subprocess.Popen(pre_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore")
+                for l in p.stdout:
+                    with task["lock"]:
+                        task["lines"].append(f"[pre] {l.rstrip()}")
+                p.wait()
 
         # Step 2: Borg Create
         cmd_create = [
@@ -1532,13 +1614,17 @@ def execute_job_worker(task_id: str, job: Dict[str, Any]):
         # Step 5: Post-backup command (if specified)
         post_cmd = job.get("post_backup_cmd")
         if post_cmd and post_cmd.strip():
-            with task["lock"]:
-                task["lines"].append(f"\n--- [Пост-шаг] Команда после бэкапа: {post_cmd} ---")
-            p = subprocess.Popen(post_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore")
-            for l in p.stdout:
+            if not BORG_ALLOW_SHELL_HOOKS:
                 with task["lock"]:
-                    task["lines"].append(f"[post] {l.rstrip()}")
-            p.wait()
+                    task["lines"].append("⚠️ [SECURITY] post_backup_cmd пропущена: выполнение шелл-команд отключено политикой безопасности (BORG_ALLOW_SHELL_HOOKS=false).")
+            else:
+                with task["lock"]:
+                    task["lines"].append(f"\n--- [Пост-шаг] Команда после бэкапа: {post_cmd} ---")
+                p = subprocess.Popen(post_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore")
+                for l in p.stdout:
+                    with task["lock"]:
+                        task["lines"].append(f"[post] {l.rstrip()}")
+                p.wait()
 
         duration = time.time() - start_time
         status_str = "completed" if success else "failed"
@@ -1571,6 +1657,9 @@ def execute_job_worker(task_id: str, job: Dict[str, Any]):
             task["status"] = "failed"
             task["exit_code"] = -1
             task["completed_at"] = time.time()
+    finally:
+        if repo_lock and repo_lock.locked():
+            repo_lock.release()
 
 def start_job_execution(job_id: str) -> str:
     """Register and start an interactive backup job."""
@@ -1579,6 +1668,14 @@ def start_job_execution(job_id: str) -> str:
         job = next((j for j in jobs if j["id"] == job_id), None)
         if not job:
             raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    repo_id = job.get("repo_id")
+    repo_lock = get_repo_lock(repo_id)
+    if not repo_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Репозиторий '{repo_id}' в данный момент выполняет другую операцию. Повторите попытку позже."
+        )
 
     task_id = str(uuid.uuid4())[:8]
     title = f"Бэкап: {job['name']}"
@@ -1592,13 +1689,13 @@ def start_job_execution(job_id: str) -> str:
         "created_at": time.time(),
         "completed_at": None,
         "exit_code": None,
-        "lines": [
+        "lines": deque([
             f"=== Запуск задачи резервного копирования: {job['name']} ===",
             f"Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"Репозиторий: {job['repo_id']}",
             f"Источники: {', '.join(job.get('sources', []))}",
             "============================================================"
-        ],
+        ], maxlen=2000),
         "lock": threading.Lock()
     }
 
@@ -1608,7 +1705,7 @@ def start_job_execution(job_id: str) -> str:
             ACTION_TASKS.pop(oldest, None)
         ACTION_TASKS[task_id] = task_info
 
-    worker = threading.Thread(target=execute_job_worker, args=(task_id, job), daemon=True)
+    worker = threading.Thread(target=execute_job_worker, args=(task_id, job, repo_lock), daemon=True)
     worker.start()
     return task_id
 
@@ -1620,18 +1717,15 @@ async def run_backup_job_api(job_id: str):
 
 # Background Scheduler Thread
 def background_scheduler():
-    """Background scheduler evaluating jobs every 30 seconds."""
-    last_minute = ""
+    """Background scheduler evaluating jobs every 25 seconds with per-job minute tracking."""
+    job_last_run_min: Dict[str, str] = {}
     while True:
         try:
-            time.sleep(30)
+            time.sleep(25)
             now = datetime.now()
             curr_min = now.strftime("%Y-%m-%d %H:%M")
             curr_time = now.strftime("%H:%M")
             curr_dow = now.isoweekday()
-
-            if curr_min == last_minute:
-                continue
 
             with JOBS_LOCK:
                 jobs = load_jobs()
@@ -1652,13 +1746,20 @@ def background_scheduler():
                 if freq == "weekly" and curr_dow not in sched.get("days", [1]):
                     continue
 
-                print(f"[SCHEDULER] Автозапуск задачи: {job.get('name')} ({job.get('id')})")
-                last_minute = curr_min
-                start_job_execution(job["id"])
+                job_id = job.get("id")
+                if job_last_run_min.get(job_id) == curr_min:
+                    continue
+
+                print(f"[SCHEDULER] Автозапуск задачи: {job.get('name')} ({job_id})")
+                job_last_run_min[job_id] = curr_min
+                try:
+                    start_job_execution(job_id)
+                except Exception as e:
+                    print(f"[SCHEDULER] Не удалось запустить задачу {job_id}: {e}")
 
         except Exception as e:
             print(f"[SCHEDULER ERROR] {e}")
-            time.sleep(30)
+            time.sleep(25)
 
 # Start background scheduler daemon
 threading.Thread(target=background_scheduler, daemon=True).start()

@@ -19,6 +19,20 @@
               500: '#10b981',
               600: '#059669',
               700: '#047857',
+            },
+            surface: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+              400: '#94a3b8',
+              500: '#64748b',
+              600: '#475569',
+              700: '#334155',
+              800: '#1e293b',
+              850: '#172033',
+              900: '#0f172a',
+              950: '#020617',
             }
           }
         }
@@ -84,46 +98,46 @@
       </div>
 
       <!-- Quick Actions / Nav Links -->
-      <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap">
         <!-- Theme Toggle Button -->
-        <button id="themeToggleBtn" onclick="toggleTheme()" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+        <button id="themeToggleBtn" onclick="toggleTheme()" class="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition" title="Переключить тему">
           <i id="themeIcon" class="fa-solid fa-moon text-indigo-600 dark:text-amber-400"></i>
-          <span id="themeText">Тёмная тема</span>
+          <span id="themeText" class="hidden sm:inline">Тёмная тема</span>
         </button>
 
-        <button id="refreshBtn" onclick="triggerRefresh()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+        <button id="refreshBtn" onclick="triggerRefresh()" class="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition" title="Обновить данные">
           <i id="refreshIcon" class="fa-solid fa-arrows-rotate"></i>
-          <span>Обновить</span>
+          <span class="hidden sm:inline">Обновить</span>
         </button>
 
-        <button onclick="openDiffModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+        <button onclick="openDiffModal()" class="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition" title="Сравнить срезы">
           <i class="fa-solid fa-code-compare text-indigo-500"></i>
-          <span>Сравнить срезы</span>
+          <span class="hidden md:inline">Сравнить срезы</span>
         </button>
 
-        <button onclick="openJobsModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition">
+        <button onclick="openJobsModal()" class="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition" title="Задачи бэкапа">
           <i class="fa-solid fa-list-check"></i>
-          <span>Задачи бэкапа</span>
+          <span class="hidden sm:inline">Задачи бэкапа</span>
         </button>
 
-        <button onclick="openActionsModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
+        <button onclick="openActionsModal()" class="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition" title="Действия Borg">
           <i class="fa-solid fa-bolt-lightning"></i>
-          <span>Действия Borg</span>
+          <span class="hidden sm:inline">Действия Borg</span>
         </button>
 
-        <button onclick="openGuideModal()" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-600/20 dark:hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30 transition shadow-sm">
+        <button onclick="openGuideModal()" class="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-600/20 dark:hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30 transition shadow-sm" title="Инструкция DR">
           <i class="fa-solid fa-book-medical"></i>
-          <span>Инструкция DR</span>
+          <span class="hidden lg:inline">Инструкция DR</span>
         </button>
 
-        <a id="linkOliveTin" href=":1337" target="_blank" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+        <a id="linkOliveTin" href=":1337" target="_blank" class="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition" title="OliveTin">
           <i class="fa-solid fa-terminal text-amber-500"></i>
-          <span>OliveTin</span>
+          <span class="hidden lg:inline">OliveTin</span>
         </a>
 
-        <a id="linkUptimeKuma" href=":3002" target="_blank" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition">
+        <a id="linkUptimeKuma" href=":3002" target="_blank" class="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-sm transition" title="Uptime Kuma">
           <i class="fa-solid fa-heart-pulse text-rose-500"></i>
-          <span>Uptime Kuma</span>
+          <span class="hidden lg:inline">Uptime Kuma</span>
         </a>
       </div>
 
@@ -397,7 +411,7 @@
           <!-- Search & Repo Filter -->
           <div class="relative">
             <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-            <input type="text" id="archiveSearch" oninput="filterArchivesData()" placeholder="Поиск по имени или дате..." class="bg-slate-50 dark:bg-surface-900 text-xs text-slate-900 dark:text-white pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500/50 w-44 sm:w-56">
+            <input type="text" id="archiveSearch" oninput="debouncedFilterArchivesData()" placeholder="Поиск по имени или дате..." class="bg-slate-50 dark:bg-surface-900 text-xs text-slate-900 dark:text-white pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500/50 w-44 sm:w-56">
           </div>
 
           <select id="archiveRepoSelect" onchange="filterArchivesData()" class="bg-slate-50 dark:bg-surface-900 text-xs text-slate-900 dark:text-white px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500/50">
@@ -427,19 +441,19 @@
                 <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('name')">
                   <span class="inline-flex items-center gap-1">Имя архива <i id="sortIcon_name" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
                 </th>
-                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('start')">
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition hidden sm:table-cell" onclick="sortArchivesBy('start')">
                   <span class="inline-flex items-center gap-1">Дата и время <i id="sortIcon_start" class="fa-solid fa-sort-down text-emerald-500 text-[10px]"></i></span>
                 </th>
-                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('duration')">
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition hidden md:table-cell" onclick="sortArchivesBy('duration')">
                   <span class="inline-flex items-center gap-1">Длительность <i id="sortIcon_duration" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
                 </th>
-                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('original_size')">
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition hidden sm:table-cell" onclick="sortArchivesBy('original_size')">
                   <span class="inline-flex items-center gap-1">Исходный размер <i id="sortIcon_original_size" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
                 </th>
                 <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('deduplicated_size')">
                   <span class="inline-flex items-center gap-1">Новых данных (Dedup) <i id="sortIcon_deduplicated_size" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
                 </th>
-                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition" onclick="sortArchivesBy('nfiles')">
+                <th class="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white transition hidden lg:table-cell" onclick="sortArchivesBy('nfiles')">
                   <span class="inline-flex items-center gap-1">Файлов <i id="sortIcon_nfiles" class="fa-solid fa-sort text-slate-400 text-[10px]"></i></span>
                 </th>
                 <th class="py-3 px-4 text-right">Действия</th>
@@ -769,7 +783,7 @@
         <div class="flex items-center gap-3">
           <div class="relative">
             <i class="fa-solid fa-filter absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
-            <input type="text" id="explorerSearch" oninput="filterExplorerFiles()" placeholder="Фильтр файлов..." class="bg-white dark:bg-surface-900 text-xs text-slate-900 dark:text-white pl-7 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-blue-500/50 w-44 sm:w-60">
+            <input type="text" id="explorerSearch" oninput="debouncedFilterExplorerFiles()" placeholder="Фильтр файлов..." class="bg-white dark:bg-surface-900 text-xs text-slate-900 dark:text-white pl-7 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-blue-500/50 w-44 sm:w-60">
           </div>
           <button onclick="closeArchiveExplorer()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1">
             <i class="fa-solid fa-xmark text-lg"></i>
@@ -1240,11 +1254,32 @@
 
     function formatBytes(bytes, decimals = 1) {
       if (!bytes || bytes === 0) return '0 Б';
+      const isNegative = bytes < 0;
+      const absBytes = Math.abs(bytes);
       const k = 1024;
       const dm = decimals < 0 ? 0 : decimals;
       const sizes = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ПБ'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+      const i = Math.min(Math.floor(Math.log(absBytes) / Math.log(k)), sizes.length - 1);
+      const formatted = parseFloat((absBytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+      return isNegative ? '-' + formatted : formatted;
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function debounce(func, wait = 250) {
+      let timeout;
+      return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+      };
     }
 
     function formatDate(dateStr) {
@@ -1724,6 +1759,8 @@
       renderArchivesCalendar();
     }
 
+    const debouncedFilterArchivesData = debounce(filterArchivesData, 250);
+
     function sortArchivesBy(field) {
       if (archiveSortField === field) {
         archiveSortAsc = !archiveSortAsc;
@@ -1788,19 +1825,19 @@
 
         tr.innerHTML = `
           <td class="py-3 px-4">${repoBadge}</td>
-          <td class="py-3 px-4 font-semibold text-slate-900 dark:text-slate-200">${arch.name}</td>
-          <td class="py-3 px-4 text-slate-600 dark:text-slate-400">${dateFormatted}</td>
-          <td class="py-3 px-4 text-slate-700 dark:text-slate-300">${duration}</td>
-          <td class="py-3 px-4 text-slate-700 dark:text-slate-300">${rawSize}</td>
+          <td class="py-3 px-4 font-semibold text-slate-900 dark:text-slate-200">${escapeHtml(arch.name)}</td>
+          <td class="py-3 px-4 text-slate-600 dark:text-slate-400 hidden sm:table-cell">${dateFormatted}</td>
+          <td class="py-3 px-4 text-slate-700 dark:text-slate-300 hidden md:table-cell">${duration}</td>
+          <td class="py-3 px-4 text-slate-700 dark:text-slate-300 hidden sm:table-cell">${rawSize}</td>
           <td class="py-3 px-4 text-emerald-600 dark:text-emerald-400 font-bold">${dedupDelta}</td>
-          <td class="py-3 px-4 text-slate-500 dark:text-slate-400">${nfiles}</td>
+          <td class="py-3 px-4 text-slate-500 dark:text-slate-400 hidden lg:table-cell">${nfiles}</td>
           <td class="py-3 px-4 text-right whitespace-nowrap">
             <div class="inline-flex items-center gap-1.5">
               <button onclick="openArchiveExplorerByIndex(${index})" class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-sans border border-blue-200 dark:border-blue-500/20 shadow-sm transition flex items-center gap-1" title="Открыть проводник файлов этого среза">
-                <i class="fa-regular fa-folder-open text-blue-500"></i><span>Файлы</span>
+                <i class="fa-regular fa-folder-open text-blue-500"></i><span class="hidden sm:inline">Файлы</span>
               </button>
               <button onclick="openRestoreModalByIndex(${index})" class="px-2.5 py-1 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-lg text-xs font-sans border border-slate-200 dark:border-slate-700 shadow-sm transition flex items-center gap-1" title="Команды восстановления и проверка">
-                <i class="fa-solid fa-terminal text-emerald-500"></i><span>Команды</span>
+                <i class="fa-solid fa-terminal text-emerald-500"></i><span class="hidden sm:inline">Команды</span>
               </button>
             </div>
           </td>
@@ -2200,7 +2237,7 @@
 
         tr.innerHTML = `
           <td class="py-2 px-3 text-slate-800 dark:text-slate-200 break-all text-[11px]">
-            ${icon}<span>${file.path}</span>
+            ${icon}<span>${escapeHtml(file.path)}</span>
           </td>
           <td class="py-2 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">${sizeText}</td>
           <td class="py-2 px-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">${formatDate(file.mtime)}</td>
@@ -2221,6 +2258,8 @@
       document.getElementById('explorerCountInfo').innerText = `Найдено: ${filtered.length.toLocaleString()} из ${explorerFiles.length.toLocaleString()}`;
       renderExplorerTable(filtered);
     }
+
+    const debouncedFilterExplorerFiles = debounce(filterExplorerFiles, 250);
 
     function downloadArchiveFile(encodedPath) {
       const path = decodeURIComponent(encodedPath);
@@ -2450,7 +2489,7 @@
 
           tr.innerHTML = `
             <td class="py-2 px-3 whitespace-nowrap">${typeBadge}</td>
-            <td class="py-2 px-3 text-slate-800 dark:text-slate-200 break-all text-[11px]">${item.path}</td>
+            <td class="py-2 px-3 text-slate-800 dark:text-slate-200 break-all text-[11px]">${escapeHtml(item.path)}</td>
             <td class="py-2 px-3 text-right font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">${deltaStr}</td>
           `;
           tbody.appendChild(tr);
@@ -2484,6 +2523,10 @@
     }
 
     async function triggerAction(action, repoId = null, archiveName = null) {
+      if (action === 'break_lock') {
+        const confirmed = confirm('ВНИМАНИЕ: Принудительное снятие блокировки (break-lock) безопасно только если в данный момент не выполняется реальный бэкап или проверка.\n\nВы уверены, что хотите снять блокировку репозитория?');
+        if (!confirmed) return;
+      }
       openActionsModal();
 
       if (currentEventSource) {
@@ -2635,7 +2678,7 @@
           ? (sched.frequency === 'daily' ? `Ежедневно в ${sched.time || '00:00'}` : (sched.frequency === 'weekly' ? `Еженедельно в ${sched.time || '00:00'}` : 'Только вручную'))
           : 'Отключено';
 
-        const sourcesList = (job.sources || []).map(s => `<code class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[11px]">${s}</code>`).join(' ');
+        const sourcesList = (job.sources || []).map(s => `<code class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[11px]">${escapeHtml(s)}</code>`).join(' ');
 
         let lastRunHtml = '<span class="text-slate-400">Еще не запускалась из дашборда</span>';
         if (job.last_run) {
@@ -2643,25 +2686,25 @@
           const lrStatus = lr.status === 'completed'
             ? '<span class="text-emerald-600 dark:text-emerald-400 font-semibold"><i class="fa-solid fa-check mr-1"></i>Успешно</span>'
             : '<span class="text-rose-600 dark:text-rose-400 font-semibold"><i class="fa-solid fa-xmark mr-1"></i>Ошибка</span>';
-          lastRunHtml = `${lrStatus} (${lr.timestamp || ''}, срез: ${lr.archive_name || '--'}, ${lr.duration || 0} с)`;
+          lastRunHtml = `${lrStatus} (${escapeHtml(lr.timestamp || '')}, срез: ${escapeHtml(lr.archive_name || '--')}, ${lr.duration || 0} с)`;
         }
 
         const deleteBtn = !isSys
-          ? `<button onclick="deleteBackupJob('${job.id}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-sans border border-rose-200 dark:border-rose-500/20 transition" title="Удалить задачу"><i class="fa-regular fa-trash-can"></i></button>`
+          ? `<button onclick="deleteBackupJob('${escapeHtml(job.id)}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-sans border border-rose-200 dark:border-rose-500/20 transition" title="Удалить задачу"><i class="fa-regular fa-trash-can"></i></button>`
           : '';
 
         card.innerHTML = `
           <div class="flex items-center justify-between flex-wrap gap-2">
             <div class="flex items-center gap-2 flex-wrap">
-              <h4 class="font-bold text-slate-900 dark:text-white text-sm">${job.name}</h4>
+              <h4 class="font-bold text-slate-900 dark:text-white text-sm">${escapeHtml(job.name)}</h4>
               ${sysBadge}
               ${repoBadge}
             </div>
             <div class="flex items-center gap-1.5">
-              <button onclick="runBackupJob('${job.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition flex items-center gap-1.5" title="Запустить бэкап немедленно">
+              <button onclick="runBackupJob('${escapeHtml(job.id)}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm transition flex items-center gap-1.5" title="Запустить бэкап немедленно">
                 <i class="fa-solid fa-play text-[10px]"></i><span>Запустить сейчас</span>
               </button>
-              <button onclick="openJobConfigModal('${job.id}')" class="px-3 py-1.5 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 shadow-sm transition flex items-center gap-1">
+              <button onclick="openJobConfigModal('${escapeHtml(job.id)}')" class="px-3 py-1.5 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 shadow-sm transition flex items-center gap-1">
                 <i class="fa-solid fa-pen-to-square"></i><span>Правка</span>
               </button>
               ${deleteBtn}
@@ -2676,11 +2719,11 @@
             <div class="space-y-1">
               <div>
                 <span class="text-slate-500 dark:text-slate-400">Расписание: </span>
-                <span class="font-semibold text-slate-800 dark:text-slate-200">${schedText}</span>
+                <span class="font-semibold text-slate-800 dark:text-slate-200">${escapeHtml(schedText)}</span>
               </div>
               <div>
                 <span class="text-slate-500 dark:text-slate-400">Сжатие: </span>
-                <span class="font-mono text-slate-700 dark:text-slate-300">${job.compression || 'auto,zstd,6'}</span>
+                <span class="font-mono text-slate-700 dark:text-slate-300">${escapeHtml(job.compression || 'auto,zstd,6')}</span>
                 <span class="text-slate-400 mx-1">•</span>
                 <span class="text-slate-500 dark:text-slate-400">Ротация: </span>
                 <span class="text-slate-700 dark:text-slate-300">D:${job.retention?.keep_daily || 7} W:${job.retention?.keep_weekly || 4} M:${job.retention?.keep_monthly || 3}</span>
@@ -2863,11 +2906,11 @@
 
         if (item.is_dir) {
           row.innerHTML = `
-            <div class="flex items-center gap-2 flex-1 cursor-pointer overflow-hidden text-slate-800 dark:text-slate-200" onclick="browseServerPath('${item.path}')">
+            <div class="flex items-center gap-2 flex-1 cursor-pointer overflow-hidden text-slate-800 dark:text-slate-200" onclick="browseServerPath('${encodeURIComponent(item.path)}')">
               <i class="fa-regular fa-folder text-amber-500 text-sm shrink-0"></i>
-              <span class="truncate font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition" title="${item.path}">${item.name}</span>
+              <span class="truncate font-semibold hover:text-indigo-600 dark:hover:text-indigo-400 transition" title="${escapeHtml(item.path)}">${escapeHtml(item.name)}</span>
             </div>
-            <button type="button" onclick="addSourcePath('${item.path}')" class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 rounded text-[10px] font-sans font-semibold border border-indigo-200 dark:border-indigo-500/20 transition flex items-center gap-1 shrink-0">
+            <button type="button" onclick="addSourcePath('${escapeHtml(item.path)}')" class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 rounded text-[10px] font-sans font-semibold border border-indigo-200 dark:border-indigo-500/20 transition flex items-center gap-1 shrink-0">
               <i class="fa-solid fa-plus text-[9px]"></i><span>Выбрать</span>
             </button>
           `;
@@ -2875,10 +2918,10 @@
           row.innerHTML = `
             <div class="flex items-center gap-2 flex-1 overflow-hidden text-slate-500 dark:text-slate-400">
               <i class="fa-regular fa-file text-slate-400 text-sm shrink-0"></i>
-              <span class="truncate" title="${item.path}">${item.name}</span>
+              <span class="truncate" title="${escapeHtml(item.path)}">${escapeHtml(item.name)}</span>
               <span class="text-[10px] text-slate-400 shrink-0 font-sans">(${formatBytes(item.size)})</span>
             </div>
-            <button type="button" onclick="addSourcePath('${item.path}')" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-sans font-semibold transition flex items-center gap-1 shrink-0">
+            <button type="button" onclick="addSourcePath('${escapeHtml(item.path)}')" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded text-[10px] font-sans font-semibold transition flex items-center gap-1 shrink-0">
               <i class="fa-solid fa-plus text-[9px]"></i><span>Выбрать</span>
             </button>
           `;
@@ -3141,6 +3184,49 @@
       modal.classList.remove('flex');
       modal.classList.add('hidden');
     }
+
+    // Global modal handlers: Escape key and backdrop click
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const openModals = [
+          { id: 'jobConfigModal', close: closeJobConfigModal },
+          { id: 'jobsModal', close: closeJobsModal },
+          { id: 'explorerModal', close: closeArchiveExplorer },
+          { id: 'diffModal', close: closeDiffModal },
+          { id: 'actionsModal', close: closeActionsModal },
+          { id: 'restoreModal', close: closeRestoreModal },
+          { id: 'drTestModal', close: closeDrTestModal },
+          { id: 'guideModal', close: closeGuideModal }
+        ];
+        for (const m of openModals) {
+          const el = document.getElementById(m.id);
+          if (el && !el.classList.contains('hidden')) {
+            m.close();
+            break;
+          }
+        }
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      const openModals = [
+        { id: 'jobConfigModal', close: closeJobConfigModal },
+        { id: 'jobsModal', close: closeJobsModal },
+        { id: 'explorerModal', close: closeArchiveExplorer },
+        { id: 'diffModal', close: closeDiffModal },
+        { id: 'actionsModal', close: closeActionsModal },
+        { id: 'restoreModal', close: closeRestoreModal },
+        { id: 'drTestModal', close: closeDrTestModal },
+        { id: 'guideModal', close: closeGuideModal }
+      ];
+      for (const m of openModals) {
+        const el = document.getElementById(m.id);
+        if (el && e.target === el) {
+          m.close();
+          break;
+        }
+      }
+    });
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', () => {
