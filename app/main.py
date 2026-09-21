@@ -15,6 +15,7 @@ import threading
 import hashlib
 import secrets
 import base64
+from contextlib import asynccontextmanager
 from collections import deque
 from urllib.parse import quote
 from datetime import datetime, timedelta
@@ -26,51 +27,6 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-app = FastAPI(
-    title="BorgBackup Analytics Dashboard",
-    description="Lightweight Web UI & Analytics for BorgBackup repositories",
-    version="2.0.0"
-)
-
-# Security & Shell Hook Policy
-BORG_AUTH_USER = os.getenv("BORG_AUTH_USER", "").strip()
-BORG_AUTH_PASSWORD = os.getenv("BORG_AUTH_PASSWORD", "").strip()
-BORG_ALLOW_SHELL_HOOKS = os.getenv("BORG_ALLOW_SHELL_HOOKS", "false").lower() in ("true", "1", "yes")
-
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    # Always allow health check without authentication
-    if request.url.path == "/api/health":
-        return await call_next(request)
-
-    if BORG_AUTH_USER and BORG_AUTH_PASSWORD:
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Basic "):
-            return Response(
-                status_code=401,
-                content="Требуется авторизация",
-                headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
-            )
-        try:
-            encoded = auth_header.split(" ", 1)[1]
-            decoded = base64.b64decode(encoded).decode("utf-8")
-            username, password = decoded.split(":", 1)
-            user_ok = secrets.compare_digest(username, BORG_AUTH_USER)
-            pass_ok = secrets.compare_digest(password, BORG_AUTH_PASSWORD)
-            if not (user_ok and pass_ok):
-                return Response(
-                    status_code=401,
-                    content="Неверный логин или пароль",
-                    headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
-                )
-        except Exception:
-            return Response(
-                status_code=401,
-                content="Неверный формат авторизации",
-                headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
-            )
-    return await call_next(request)
-
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
@@ -80,6 +36,7 @@ DOCS_DIR = BASE_DIR / "docs"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 ARCHIVE_CACHE_FILE = DATA_DIR / "archive_cache.json"
 DR_TEST_FILE = DATA_DIR / "dr_test_result.json"
+AUTH_FILE = DATA_DIR / "auth.json"
 CONFIG_FILE = BASE_DIR / "config.json"
 DATA_CONFIG_FILE = DATA_DIR / "config.json"
 
@@ -88,15 +45,181 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 LOGS_DIR = Path(os.getenv("BORG_LOGS_DIR", "/logs" if Path("/logs").exists() else "/volume1/logs"))
 RECOVERY_DOC = Path(os.getenv("BORG_GUIDE_PATH", "/app/docs/RECOVERY.md" if Path("/app/docs/RECOVERY.md").exists() else "/volume1/script/ИНСТРУКЦИЯ_ПО_ВОССТАНОВЛЕНИЮ.md"))
 
-# Repository-level locks to prevent simultaneous Borg operations on the same repository
-REPO_LOCKS: Dict[str, threading.Lock] = {}
+# -----------------------------------------------------------------------------
+# 🔒 SECURITY & FAIL-CLOSED AUTHENTICATION POLICY
+# -----------------------------------------------------------------------------
+BORG_ALLOW_SHELL_HOOKS = os.getenv("BORG_ALLOW_SHELL_HOOKS", "false").lower() in ("true", "1", "yes")
+BORG_AUTH_DISABLED = os.getenv("BORG_AUTH_DISABLED", "false").lower() in ("true", "1", "yes")
+
+ACTIVE_AUTH_USER: Optional[str] = None
+ACTIVE_AUTH_PASSWORD: Optional[str] = None
+
+if BORG_AUTH_DISABLED:
+    print("[SECURITY] BORG_AUTH_DISABLED=true: Встроенная аутентификация отключена администратором.")
+else:
+    env_user = os.getenv("BORG_AUTH_USER", "").strip()
+    env_pass = os.getenv("BORG_AUTH_PASSWORD", "").strip()
+    if env_user and env_pass:
+        ACTIVE_AUTH_USER = env_user
+        ACTIVE_AUTH_PASSWORD = env_pass
+    else:
+        # Check or generate credentials in data/auth.json
+        if AUTH_FILE.exists():
+            try:
+                with open(AUTH_FILE, "r", encoding="utf-8") as f:
+                    auth_data = json.load(f)
+                    ACTIVE_AUTH_USER = auth_data.get("username", "admin")
+                    ACTIVE_AUTH_PASSWORD = auth_data.get("password", "")
+            except Exception as e:
+                print(f"[SECURITY ERROR] Не удалось прочитать {AUTH_FILE}: {e}")
+
+        if not ACTIVE_AUTH_USER or not ACTIVE_AUTH_PASSWORD:
+            ACTIVE_AUTH_USER = "admin"
+            ACTIVE_AUTH_PASSWORD = secrets.token_urlsafe(16)
+            auth_data = {
+                "username": ACTIVE_AUTH_USER,
+                "password": ACTIVE_AUTH_PASSWORD,
+                "generated_at": datetime.now().isoformat(),
+                "note": "Автоматически сгенерированные учетные данные для BorgBackup Dashboard. Для отключения установите BORG_AUTH_DISABLED=true в .env"
+            }
+            try:
+                temp_auth = AUTH_FILE.with_suffix(f".tmp_{os.getpid()}")
+                with open(temp_auth, "w", encoding="utf-8") as f:
+                    json.dump(auth_data, f, indent=2)
+                os.replace(temp_auth, AUTH_FILE)
+                try:
+                    os.chmod(AUTH_FILE, 0o600)
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"[SECURITY ERROR] Не удалось сохранить {AUTH_FILE}: {e}")
+
+            print("=" * 80)
+            print("[SECURITY] BORG_AUTH_USER / BORG_AUTH_PASSWORD не заданы в окружении.")
+            print("[SECURITY] Для защиты сервера сгенерированы постоянные учетные данные:")
+            print(f"       Логин:  {ACTIVE_AUTH_USER}")
+            print(f"       Пароль: {ACTIVE_AUTH_PASSWORD}")
+            print(f"       Файл:   {AUTH_FILE}")
+            print("[SECURITY] Для отключения установите BORG_AUTH_DISABLED=true в файле .env")
+            print("=" * 80)
+
+# Lifecycle management & Async single-flight
+SCHEDULER_STOP_EVENT = threading.Event()
+STATUS_COLLECT_LOCK = asyncio.Lock()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start background data collector and scheduler
+    threading.Thread(target=refresh_data_task, daemon=True).start()
+    sched_thread = threading.Thread(
+        target=background_scheduler, 
+        args=(SCHEDULER_STOP_EVENT,), 
+        daemon=True
+    )
+    sched_thread.start()
+    yield
+    # Shutdown: Signal scheduler to stop cleanly
+    SCHEDULER_STOP_EVENT.set()
+
+app = FastAPI(
+    title="BorgBackup Analytics Dashboard",
+    description="Lightweight Web UI & Analytics for BorgBackup repositories",
+    version="2.0.0",
+    lifespan=lifespan
+)
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    # Always allow health check without authentication
+    if request.url.path == "/api/health":
+        return await call_next(request)
+
+    if BORG_AUTH_DISABLED or not ACTIVE_AUTH_USER or not ACTIVE_AUTH_PASSWORD:
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Basic "):
+        return Response(
+            status_code=401,
+            content="Требуется авторизация",
+            headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
+        )
+    try:
+        encoded = auth_header.split(" ", 1)[1]
+        decoded = base64.b64decode(encoded).decode("utf-8")
+        username, password = decoded.split(":", 1)
+        user_ok = secrets.compare_digest(username, ACTIVE_AUTH_USER)
+        pass_ok = secrets.compare_digest(password, ACTIVE_AUTH_PASSWORD)
+        if not (user_ok and pass_ok):
+            return Response(
+                status_code=401,
+                content="Неверный логин или пароль",
+                headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
+            )
+    except Exception:
+        return Response(
+            status_code=401,
+            content="Неверный формат авторизации",
+            headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
+        )
+    return await call_next(request)
+
+# -----------------------------------------------------------------------------
+# 🔒 REPOSITORY-LEVEL LOCKS WITH TASK OWNERSHIP
+# -----------------------------------------------------------------------------
+
+class RepoLock:
+    """Thread-safe lock for a repository with task ownership tracking."""
+    def __init__(self, repo_id: str):
+        self.repo_id = repo_id
+        self._lock = threading.Lock()
+        self._owner: Optional[str] = None
+        self._mutex = threading.Lock()
+
+    def acquire(self, owner: str, blocking: bool = False) -> bool:
+        with self._mutex:
+            if self._owner is not None and self._owner != owner:
+                return False
+            acq = self._lock.acquire(blocking=blocking)
+            if acq:
+                self._owner = owner
+            return acq
+
+    def release(self, owner: str):
+        with self._mutex:
+            if self._owner == owner:
+                self._owner = None
+                if self._lock.locked():
+                    try:
+                        self._lock.release()
+                    except RuntimeError:
+                        pass
+
+    def force_release(self):
+        with self._mutex:
+            self._owner = None
+            if self._lock.locked():
+                try:
+                    self._lock.release()
+                except RuntimeError:
+                    pass
+
+    def is_locked(self) -> bool:
+        with self._mutex:
+            return self._owner is not None
+
+    def get_owner(self) -> Optional[str]:
+        with self._mutex:
+            return self._owner
+
+REPO_LOCKS: Dict[str, RepoLock] = {}
 REPO_LOCKS_MUTEX = threading.Lock()
 
-def get_repo_lock(repo_id: str) -> threading.Lock:
-    """Retrieve or create a thread lock for a given repository."""
+def get_repo_lock(repo_id: str) -> RepoLock:
+    """Retrieve or create a thread-safe owned lock for a given repository."""
     with REPO_LOCKS_MUTEX:
         if repo_id not in REPO_LOCKS:
-            REPO_LOCKS[repo_id] = threading.Lock()
+            REPO_LOCKS[repo_id] = RepoLock(repo_id)
         return REPO_LOCKS[repo_id]
 
 def atomic_save_json(filepath: Path, data: Any):
@@ -111,6 +234,12 @@ def atomic_save_json(filepath: Path, data: Any):
         os.replace(temp_file, filepath)
     except Exception as e:
         print(f"[ERROR] Не удалось атомарно сохранить {filepath}: {e}")
+
+def serialize_model(model: BaseModel) -> dict:
+    """Serialize Pydantic model with v2 / v1 compatibility."""
+    if hasattr(model, "model_dump"):
+        return model.model_dump()
+    return model.dict()
 
 def format_bytes(b: int) -> str:
     if not b or b <= 0:
@@ -235,6 +364,22 @@ CACHE_LOCK = threading.Lock()
 ACTION_TASKS: Dict[str, Dict[str, Any]] = {}
 ACTION_LOCK = threading.Lock()
 
+def register_action_task(task_id: str, task_info: Dict[str, Any]):
+    """Register a new action task, evicting only completed/failed tasks if capacity exceeded.
+    Never evicts running tasks to prevent terminating live SSE streams."""
+    with ACTION_LOCK:
+        if len(ACTION_TASKS) >= 15:
+            candidates = [
+                (k, v.get("completed_at") or v.get("created_at") or 0)
+                for k, v in ACTION_TASKS.items()
+                if v.get("status") in ("completed", "failed")
+            ]
+            candidates.sort(key=lambda x: x[1])
+            while len(ACTION_TASKS) >= 15 and candidates:
+                old_id, _ = candidates.pop(0)
+                ACTION_TASKS.pop(old_id, None)
+        ACTION_TASKS[task_id] = task_info
+
 def get_borg_env() -> dict:
     """Build environment variables for safe Borg invocation."""
     env = os.environ.copy()
@@ -258,14 +403,17 @@ def save_archive_cache(cache: dict):
     atomic_save_json(ARCHIVE_CACHE_FILE, cache)
 
 def run_borg_command(args: List[str]) -> Any:
-    """Execute a Borg CLI command and return parsed JSON."""
+    """Execute a Borg CLI command and return parsed JSON with a safe 300s timeout."""
     env = get_borg_env()
     try:
-        res = subprocess.run(args, capture_output=True, text=True, env=env, timeout=120)
+        res = subprocess.run(args, capture_output=True, text=True, env=env, timeout=300)
         if res.returncode != 0:
             print(f"Borg command warning: {' '.join(args)}\nStderr: {res.stderr}")
             return None
         return json.loads(res.stdout)
+    except subprocess.TimeoutExpired:
+        print(f"[TIMEOUT] Команда Borg превысила лимит ожидания 300 секунд: {' '.join(args)}")
+        return None
     except Exception as e:
         print(f"Exception running borg {' '.join(args)}: {e}")
         return None
@@ -388,7 +536,8 @@ def parse_log_health() -> Dict[str, Any]:
 def calculate_storage_forecast(repos: List[Dict[str, Any]], archives: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Calculate storage consumption runway and capacity forecast."""
     repo_mount_path = Path("/repos")
-    target_path = repo_mount_path if repo_mount_path.exists() else Path(repos[0]["path"] if repos else ".")
+    default_target = repos[0].get("path", ".") if (repos and isinstance(repos[0], dict)) else "."
+    target_path = repo_mount_path if repo_mount_path.exists() else Path(default_target)
 
     try:
         usage = shutil.disk_usage(str(target_path))
@@ -620,10 +769,6 @@ def refresh_data_task():
         with CACHE_LOCK:
             GLOBAL_CACHE["is_updating"] = False
 
-@app.on_event("startup")
-def startup_event():
-    threading.Thread(target=refresh_data_task, daemon=True).start()
-
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -632,14 +777,25 @@ async def index(request: Request):
 async def get_status():
     global GLOBAL_CACHE
     now = time.time()
-    if GLOBAL_CACHE["data"] is None or (now - GLOBAL_CACHE["last_updated"] > 300 and not GLOBAL_CACHE["is_updating"]):
-        threading.Thread(target=refresh_data_task, daemon=True).start()
-        if GLOBAL_CACHE["data"] is None:
-            return await asyncio.to_thread(collect_all_data)
-
-    if GLOBAL_CACHE["data"] is not None:
+    
+    # Return fresh cache immediately
+    if GLOBAL_CACHE["data"] is not None and (now - GLOBAL_CACHE["last_updated"] <= 300):
         return GLOBAL_CACHE["data"]
-    return await asyncio.to_thread(collect_all_data)
+
+    # If data exists but stale, trigger background refresh and return cached data
+    if GLOBAL_CACHE["data"] is not None and not GLOBAL_CACHE["is_updating"]:
+        threading.Thread(target=refresh_data_task, daemon=True).start()
+        return GLOBAL_CACHE["data"]
+
+    # Cold start: serialize collection through async lock to prevent duplicate concurrent Borg runs
+    async with STATUS_COLLECT_LOCK:
+        if GLOBAL_CACHE["data"] is not None:
+            return GLOBAL_CACHE["data"]
+        data = await asyncio.to_thread(collect_all_data)
+        with CACHE_LOCK:
+            GLOBAL_CACHE["data"] = data
+            GLOBAL_CACHE["last_updated"] = time.time()
+        return data
 
 @app.post("/api/refresh")
 async def trigger_refresh(background_tasks: BackgroundTasks):
@@ -850,11 +1006,11 @@ class ActionRequest(BaseModel):
     repo_id: Optional[str] = None
     archive_name: Optional[str] = None
 
-def run_action_worker(task_id: str, cmd: List[str], env: dict, repo_lock: Optional[threading.Lock] = None):
+def run_action_worker(task_id: str, cmd: List[str], env: dict, repo_lock: Optional[RepoLock] = None):
     task = ACTION_TASKS.get(task_id)
     if not task:
-        if repo_lock and repo_lock.locked():
-            repo_lock.release()
+        if repo_lock:
+            repo_lock.release(task_id)
         return
     try:
         proc = subprocess.Popen(
@@ -883,15 +1039,15 @@ def run_action_worker(task_id: str, cmd: List[str], env: dict, repo_lock: Option
             task["exit_code"] = -1
             task["completed_at"] = time.time()
     finally:
-        if repo_lock and repo_lock.locked():
-            repo_lock.release()
+        if repo_lock:
+            repo_lock.release(task_id)
 
-def run_dr_test_worker(task_id: str, repo_id: str, archive_name: Optional[str], env: dict, repo_lock: Optional[threading.Lock] = None):
+def run_dr_test_worker(task_id: str, repo_id: str, archive_name: Optional[str], env: dict, repo_lock: Optional[RepoLock] = None):
     global GLOBAL_CACHE
     task = ACTION_TASKS.get(task_id)
     if not task:
-        if repo_lock and repo_lock.locked():
-            repo_lock.release()
+        if repo_lock:
+            repo_lock.release(task_id)
         return
 
     start_time = time.time()
@@ -1098,8 +1254,8 @@ def run_dr_test_worker(task_id: str, repo_id: str, archive_name: Optional[str], 
             if GLOBAL_CACHE.get("data") and "health" in GLOBAL_CACHE["data"]:
                 GLOBAL_CACHE["data"]["health"]["dr_test"] = load_dr_test_result()
     finally:
-        if repo_lock and repo_lock.locked():
-            repo_lock.release()
+        if repo_lock:
+            repo_lock.release(task_id)
 
 @app.post("/api/actions/run")
 async def run_action(req: ActionRequest):
@@ -1114,37 +1270,43 @@ async def run_action(req: ActionRequest):
     if not repo_cfg:
         raise HTTPException(status_code=400, detail="Не указан или не найден репозиторий")
 
+    task_id = str(uuid.uuid4())[:8]
     repo_lock = get_repo_lock(req.repo_id)
-    if not repo_lock.acquire(blocking=False):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Репозиторий '{repo_cfg.get('name', req.repo_id)}' в данный момент выполняет другую операцию. Дождитесь её завершения."
-        )
+
+    if action == "break_lock":
+        repo_lock.force_release()
+        cmd = ["borg", "break-lock", "--", repo_cfg["path"]]
+        title = f"Снятие блокировки ({repo_cfg.get('name')})"
+    else:
+        if not repo_lock.acquire(task_id, blocking=False):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Репозиторий '{repo_cfg.get('name', req.repo_id)}' в данный момент выполняет другую операцию (владелец: {repo_lock.get_owner()}). Дождитесь её завершения."
+            )
 
     repo_path = repo_cfg["path"]
     cmd = []
     title = ""
 
     if action == "break_lock":
-        cmd = ["borg", "break-lock", repo_path]
+        cmd = ["borg", "break-lock", "--", repo_path]
         title = f"Снятие блокировки ({repo_cfg.get('name')})"
     elif action == "check_fast":
         if not req.archive_name:
-            repo_lock.release()
+            repo_lock.release(task_id)
             raise HTTPException(status_code=400, detail="Не указано имя архива для быстрой проверки")
-        cmd = ["borg", "check", "-v", "--progress", "--archives-only", "-a", req.archive_name, repo_path]
+        cmd = ["borg", "check", "-v", "--progress", "--archives-only", "-a", req.archive_name, "--", repo_path]
         title = f"Быстрая проверка среза {req.archive_name}"
     elif action == "check_full":
-        cmd = ["borg", "check", "-v", "--progress", repo_path]
+        cmd = ["borg", "check", "-v", "--progress", "--", repo_path]
         title = f"Полная проверка репозитория ({repo_cfg.get('name')})"
     elif action == "dr_test":
         target_name = req.archive_name or "последний срез"
         title = f"DR-тест восстановления: {target_name} ({repo_cfg.get('name')})"
     else:
-        repo_lock.release()
+        repo_lock.release(task_id)
         raise HTTPException(status_code=400, detail="Неизвестное действие")
 
-    task_id = str(uuid.uuid4())[:8]
     task_info = {
         "id": task_id,
         "action": action,
@@ -1158,11 +1320,7 @@ async def run_action(req: ActionRequest):
         "lock": threading.Lock()
     }
 
-    with ACTION_LOCK:
-        if len(ACTION_TASKS) > 10:
-            oldest = min(ACTION_TASKS.keys(), key=lambda k: ACTION_TASKS[k]["created_at"])
-            ACTION_TASKS.pop(oldest, None)
-        ACTION_TASKS[task_id] = task_info
+    register_action_task(task_id, task_info)
 
     if action == "dr_test":
         worker_thread = threading.Thread(
@@ -1435,7 +1593,7 @@ async def create_job(job: BackupJobModel):
         raise HTTPException(status_code=400, detail="Не указаны источники для резервного копирования")
 
     new_id = f"job-{str(uuid.uuid4())[:8]}"
-    job_dict = job.dict()
+    job_dict = serialize_model(job)
     job_dict["id"] = new_id
     job_dict["is_system"] = False
     job_dict["created_at"] = datetime.now().isoformat()
@@ -1458,7 +1616,7 @@ async def update_job(job_id: str, job: BackupJobModel):
             raise HTTPException(status_code=404, detail="Задача не найдена")
 
         old_job = jobs[idx]
-        updated = job.dict()
+        updated = serialize_model(job)
         updated["id"] = job_id
         updated["is_system"] = old_job.get("is_system", False)
         updated["created_at"] = old_job.get("created_at", datetime.now().isoformat())
@@ -1485,12 +1643,12 @@ async def delete_job(job_id: str):
 
     return {"status": "ok", "message": "Задача удалена"}
 
-def execute_job_worker(task_id: str, job: Dict[str, Any], repo_lock: Optional[threading.Lock] = None):
+def execute_job_worker(task_id: str, job: Dict[str, Any], repo_lock: Optional[RepoLock] = None):
     """Execute complete backup workflow: create -> prune -> compact."""
     task = ACTION_TASKS.get(task_id)
     if not task:
-        if repo_lock and repo_lock.locked():
-            repo_lock.release()
+        if repo_lock:
+            repo_lock.release(task_id)
         return
 
     repo_cfg = get_repo_config(job["repo_id"])
@@ -1499,8 +1657,8 @@ def execute_job_worker(task_id: str, job: Dict[str, Any], repo_lock: Optional[th
             task["lines"].append(f"[ERROR] Репозиторий {job['repo_id']} не найден!")
             task["status"] = "failed"
             task["exit_code"] = 1
-        if repo_lock and repo_lock.locked():
-            repo_lock.release()
+        if repo_lock:
+            repo_lock.release(task_id)
         return
 
     repo_path = repo_cfg["path"]
@@ -1520,11 +1678,14 @@ def execute_job_worker(task_id: str, job: Dict[str, Any], repo_lock: Optional[th
         pre_cmd = job.get("pre_backup_cmd")
         if pre_cmd and pre_cmd.strip():
             if not BORG_ALLOW_SHELL_HOOKS:
+                print(f"[SECURITY] Pre-hook blocked for job '{job.get('name')}': BORG_ALLOW_SHELL_HOOKS=false")
                 with task["lock"]:
                     task["lines"].append("⚠️ [SECURITY] pre_backup_cmd пропущена: выполнение шелл-команд отключено политикой безопасности (BORG_ALLOW_SHELL_HOOKS=false).")
             else:
+                audit_msg = f"[SECURITY AUDIT] {datetime.now().isoformat()} - Выполнение pre_backup_cmd для задачи '{job.get('name')}' (id={job.get('id')}): {pre_cmd}"
+                print(audit_msg)
                 with task["lock"]:
-                    task["lines"].append(f"--- [Шаг 0/3] Предварительная команда: {pre_cmd} ---")
+                    task["lines"].append(f"--- [Шаг 0/3] Предварительная команда (аудит пройден): {pre_cmd} ---")
                 p = subprocess.Popen(pre_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore")
                 for l in p.stdout:
                     with task["lock"]:
@@ -1586,6 +1747,7 @@ def execute_job_worker(task_id: str, job: Dict[str, Any], repo_lock: Optional[th
                 f"--keep-daily={kd}",
                 f"--keep-weekly={kw}",
                 f"--keep-monthly={km}",
+                "--",
                 repo_path
             ]
             with task["lock"]:
@@ -1600,7 +1762,7 @@ def execute_job_worker(task_id: str, job: Dict[str, Any], repo_lock: Optional[th
 
         # Step 4: Borg Compact (optional, run only if job.get('run_compact', False) is True; large HDD repos take minutes)
         if success and job.get("run_compact", False):
-            cmd_compact = ["borg", "compact", "--threshold", "10", repo_path]
+            cmd_compact = ["borg", "compact", "--threshold", "10", "--", repo_path]
             with task["lock"]:
                 task["lines"].append(f"\n--- [Шаг 3/3] Оптимизация хранилища (compact --threshold 10) ---")
                 task["lines"].append(f"$ {' '.join(cmd_compact)}")
@@ -1615,11 +1777,14 @@ def execute_job_worker(task_id: str, job: Dict[str, Any], repo_lock: Optional[th
         post_cmd = job.get("post_backup_cmd")
         if post_cmd and post_cmd.strip():
             if not BORG_ALLOW_SHELL_HOOKS:
+                print(f"[SECURITY] Post-hook blocked for job '{job.get('name')}': BORG_ALLOW_SHELL_HOOKS=false")
                 with task["lock"]:
                     task["lines"].append("⚠️ [SECURITY] post_backup_cmd пропущена: выполнение шелл-команд отключено политикой безопасности (BORG_ALLOW_SHELL_HOOKS=false).")
             else:
+                audit_msg = f"[SECURITY AUDIT] {datetime.now().isoformat()} - Выполнение post_backup_cmd для задачи '{job.get('name')}' (id={job.get('id')}): {post_cmd}"
+                print(audit_msg)
                 with task["lock"]:
-                    task["lines"].append(f"\n--- [Пост-шаг] Команда после бэкапа: {post_cmd} ---")
+                    task["lines"].append(f"\n--- [Пост-шаг] Команда после бэкапа (аудит пройден): {post_cmd} ---")
                 p = subprocess.Popen(post_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore")
                 for l in p.stdout:
                     with task["lock"]:
@@ -1658,8 +1823,8 @@ def execute_job_worker(task_id: str, job: Dict[str, Any], repo_lock: Optional[th
             task["exit_code"] = -1
             task["completed_at"] = time.time()
     finally:
-        if repo_lock and repo_lock.locked():
-            repo_lock.release()
+        if repo_lock:
+            repo_lock.release(task_id)
 
 def start_job_execution(job_id: str) -> str:
     """Register and start an interactive backup job."""
@@ -1671,13 +1836,14 @@ def start_job_execution(job_id: str) -> str:
 
     repo_id = job.get("repo_id")
     repo_lock = get_repo_lock(repo_id)
-    if not repo_lock.acquire(blocking=False):
+    task_id = str(uuid.uuid4())[:8]
+
+    if not repo_lock.acquire(task_id, blocking=False):
         raise HTTPException(
             status_code=409,
-            detail=f"Репозиторий '{repo_id}' в данный момент выполняет другую операцию. Повторите попытку позже."
+            detail=f"Репозиторий '{repo_id}' в данный момент выполняет другую операцию (владелец: {repo_lock.get_owner()}). Повторите попытку позже."
         )
 
-    task_id = str(uuid.uuid4())[:8]
     title = f"Бэкап: {job['name']}"
 
     task_info = {
@@ -1699,11 +1865,7 @@ def start_job_execution(job_id: str) -> str:
         "lock": threading.Lock()
     }
 
-    with ACTION_LOCK:
-        if len(ACTION_TASKS) > 10:
-            oldest = min(ACTION_TASKS.keys(), key=lambda k: ACTION_TASKS[k]["created_at"])
-            ACTION_TASKS.pop(oldest, None)
-        ACTION_TASKS[task_id] = task_info
+    register_action_task(task_id, task_info)
 
     worker = threading.Thread(target=execute_job_worker, args=(task_id, job, repo_lock), daemon=True)
     worker.start()
@@ -1715,53 +1877,56 @@ async def run_backup_job_api(job_id: str):
     task_id = start_job_execution(job_id)
     return {"status": "running", "task_id": task_id}
 
-# Background Scheduler Thread
-def background_scheduler():
-    """Background scheduler evaluating jobs every 25 seconds with per-job minute tracking."""
-    job_last_run_min: Dict[str, str] = {}
-    while True:
+# Background Scheduler Thread with date-based execution tracking
+def background_scheduler(stop_event: threading.Event):
+    """Background scheduler evaluating jobs with date-based tracking to avoid drift and duplicate runs."""
+    while not stop_event.is_set():
         try:
-            time.sleep(25)
+            if stop_event.wait(25):
+                break
             now = datetime.now()
-            curr_min = now.strftime("%Y-%m-%d %H:%M")
+            today_str = now.strftime("%Y-%m-%d")
             curr_time = now.strftime("%H:%M")
             curr_dow = now.isoweekday()
 
             with JOBS_LOCK:
                 jobs = load_jobs()
+                jobs_updated = False
 
-            for job in jobs:
-                if job.get("is_system"):
-                    continue  # System jobs already managed by OMV cron
-                sched = job.get("schedule", {})
-                if not sched.get("enabled", False):
-                    continue
+                for job in jobs:
+                    if job.get("is_system"):
+                        continue  # System jobs already managed by OMV cron
+                    sched = job.get("schedule", {})
+                    if not sched.get("enabled", False):
+                        continue
 
-                freq = sched.get("frequency", "daily")
-                target_time = sched.get("time", "")
+                    freq = sched.get("frequency", "daily")
+                    target_time = sched.get("time", "02:00")
+                    days = sched.get("days", [1, 2, 3, 4, 5, 6, 7])
 
-                if target_time != curr_time:
-                    continue
+                    if freq == "weekly" and curr_dow not in days:
+                        continue
 
-                if freq == "weekly" and curr_dow not in sched.get("days", [1]):
-                    continue
+                    # If already executed today, skip
+                    if job.get("last_scheduled_date") == today_str:
+                        continue
 
-                job_id = job.get("id")
-                if job_last_run_min.get(job_id) == curr_min:
-                    continue
+                    # If current time has reached or passed target time today
+                    if curr_time >= target_time:
+                        job_id = job.get("id")
+                        print(f"[SCHEDULER] Запуск запланированной задачи: {job.get('name')} ({job_id}) на {today_str}")
+                        job["last_scheduled_date"] = today_str
+                        jobs_updated = True
+                        try:
+                            start_job_execution(job_id)
+                        except Exception as e:
+                            print(f"[SCHEDULER ERROR] Ошибка запуска задачи {job_id}: {e}")
 
-                print(f"[SCHEDULER] Автозапуск задачи: {job.get('name')} ({job_id})")
-                job_last_run_min[job_id] = curr_min
-                try:
-                    start_job_execution(job_id)
-                except Exception as e:
-                    print(f"[SCHEDULER] Не удалось запустить задачу {job_id}: {e}")
+                if jobs_updated:
+                    save_jobs(jobs)
 
         except Exception as e:
-            print(f"[SCHEDULER ERROR] {e}")
-            time.sleep(25)
-
-# Start background scheduler daemon
-threading.Thread(target=background_scheduler, daemon=True).start()
+            print(f"[SCHEDULER EXCEPTION] {e}")
+            time.sleep(10)
 
 
