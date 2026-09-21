@@ -105,5 +105,28 @@ class TestBorgDashboard(unittest.TestCase):
             finally:
                 main.LOGS_DIR = orig_logs_dir
 
+    def test_is_truthy(self):
+        import main
+        for val in ["true", "True", "1", 1, "yes", "YES", "on", "ON", True]:
+            self.assertTrue(main.is_truthy(val), f"Failed for truthy {val}")
+        for val in ["false", "False", "0", 0, "no", "off", None, "", "other"]:
+            self.assertFalse(main.is_truthy(val), f"Failed for falsy {val}")
+
+    def test_load_env_files(self):
+        import main
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_env = Path(tmpdir) / ".env"
+            test_env.write_text(
+                "# Test comment\n"
+                "BORG_TEST_KEY=hello_world\n"
+                "BORG_AUTH_DISABLED='true'\n"
+                "PORT=9999\n",
+                encoding="utf-8"
+            )
+            main.load_env_files(extra_paths=[test_env])
+            self.assertEqual(os.environ.get("BORG_TEST_KEY"), "hello_world")
+            self.assertEqual(os.environ.get("BORG_AUTH_DISABLED"), "true")
+            self.assertEqual(os.environ.get("PORT"), "9999")
+
 if __name__ == "__main__":
     unittest.main()

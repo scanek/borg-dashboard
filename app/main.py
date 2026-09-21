@@ -42,21 +42,113 @@ DATA_CONFIG_FILE = DATA_DIR / "config.json"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+def is_truthy(val: Any) -> bool:
+    """Безопасная проверка строковых булевых значений (true, 1, yes, on)."""
+    return str(val).strip().lower() in ("true", "1", "yes", "on")
+
+def load_env_files(extra_paths: Optional[List[Path]] = None):
+    """
+    Автоматический поиск и загрузка переменных из .env файлов.
+    Проверяет стандартные пути внутри контейнера и смонтированные каталоги хоста,
+    чтобы изменения в .env вступали в силу сразу при обычном 'docker restart'.
+    """
+    candidate_paths = [
+        Path(os.getenv("BORG_ENV_FILE", "")) if os.getenv("BORG_ENV_FILE") else None,
+        Path(os.getenv("ENV_FILE", "")) if os.getenv("ENV_FILE") else None,
+        BASE_DIR / ".env",
+        BASE_DIR.parent / ".env",
+        DATA_DIR / ".env",
+        Path("/volume1/docker/borg-dashboard/.env"),
+        Path("/volume1/docker/borg-dashboard/data/.env"),
+    ]
+    if extra_paths:
+        candidate_paths.extend(extra_paths)
+
+    loaded = []
+    for p in candidate_paths:
+        if p and p.is_file():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        if "=" in line:
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip("'\"")
+                            # Файлы конфигурации на диске имеют высший приоритет для параметров BORG_
+                            if k.startswith("BORG_") or k in ("PORT", "TZ") or k not in os.environ:
+                                os.environ[k] = v
+                loaded.append(str(p))
+            except Exception as e:
+                print(f"[ENV ERROR] Не удалось прочитать {p}: {e}")
+
+    if loaded:
+        print(f"[ENV] Загружены параметры конфигурации из: {', '.join(loaded)}")
+
+# Загружаем переменные из файлов .env перед инициализацией путей и политик безопасности
+load_env_files()
+
 LOGS_DIR = Path(os.getenv("BORG_LOGS_DIR", "/logs" if Path("/logs").exists() else "/volume1/logs"))
 RECOVERY_DOC = Path(os.getenv("BORG_GUIDE_PATH", "/app/docs/RECOVERY.md" if Path("/app/docs/RECOVERY.md").exists() else "/volume1/script/ИНСТРУКЦИЯ_ПО_ВОССТАНОВЛЕНИЮ.md"))
 
 # -----------------------------------------------------------------------------
 # 🔒 SECURITY & FAIL-CLOSED AUTHENTICATION POLICY
 # -----------------------------------------------------------------------------
-BORG_ALLOW_SHELL_HOOKS = os.getenv("BORG_ALLOW_SHELL_HOOKS", "false").lower() in ("true", "1", "yes")
-BORG_AUTH_DISABLED = os.getenv("BORG_AUTH_DISABLED", "false").lower() in ("true", "1", "yes")
+BORG_ALLOW_SHELL_HOOKS = is_truthy(os.getenv("BORG_ALLOW_SHELL_HOOKS", "false"))
+BORG_AUTH_DISABLED = is_truthy(os.getenv("BORG_AUTH_DISABLED", "false"))
+
+# Дополнительно проверяем auth.json на наличие сохраненного флага disabled
+if not BORG_AUTH_DISABLED and AUTH_FILE.exists():
+    try:
+        with open(AUTH_FILE, "r", encoding="utf-8") as f:
+            auth_data = json.load(f)
+            if is_truthy(auth_data.get("disabled")) or is_truthy(auth_data.get("auth_disabled")):
+                BORG_AUTH_DISABLED = True
+    except Exception as e:
+        print(f"[SECURITY ERROR] Не удалось прочитать {AUTH_FILE}: {e}")
 
 ACTIVE_AUTH_USER: Optional[str] = None
 ACTIVE_AUTH_PASSWORD: Optional[str] = None
 
 if BORG_AUTH_DISABLED:
     print("[SECURITY] BORG_AUTH_DISABLED=true: Встроенная аутентификация отключена администратором.")
+    # Фиксируем статус отключения в auth.json для персистентности между перезапусками
+    try:
+        cur_data = {}
+        if AUTH_FILE.exists():
+            try:
+                with open(AUTH_FILE, "r", encoding="utf-8") as f:
+                    cur_data = json.load(f)
+            except Exception:
+                cur_data = {}
+        if not cur_data.get("disabled"):
+            cur_data["disabled"] = True
+            cur_data["updated_at"] = datetime.now().isoformat()
+            cur_data["note"] = "Авторизация отключена (BORG_AUTH_DISABLED=true). Для включения установите BORG_AUTH_DISABLED=false в .env"
+            temp_auth = AUTH_FILE.with_suffix(f".tmp_{os.getpid()}")
+            with open(temp_auth, "w", encoding="utf-8") as f:
+                json.dump(cur_data, f, indent=2)
+            os.replace(temp_auth, AUTH_FILE)
+    except Exception as e:
+        print(f"[SECURITY ERROR] Не удалось обновить {AUTH_FILE}: {e}")
 else:
+    # Если авторизация включена, убираем флаг disabled, если он был сохранен ранее
+    if AUTH_FILE.exists():
+        try:
+            with open(AUTH_FILE, "r", encoding="utf-8") as f:
+                cur_data = json.load(f)
+            if cur_data.get("disabled"):
+                cur_data.pop("disabled", None)
+                cur_data["updated_at"] = datetime.now().isoformat()
+                temp_auth = AUTH_FILE.with_suffix(f".tmp_{os.getpid()}")
+                with open(temp_auth, "w", encoding="utf-8") as f:
+                    json.dump(cur_data, f, indent=2)
+                os.replace(temp_auth, AUTH_FILE)
+        except Exception:
+            pass
+
     env_user = os.getenv("BORG_AUTH_USER", "").strip()
     env_pass = os.getenv("BORG_AUTH_PASSWORD", "").strip()
     if env_user and env_pass:
@@ -744,7 +836,9 @@ def collect_all_data() -> Dict[str, Any]:
             "overall_dedup_ratio": overall_dedup_ratio,
             "total_archives": total_archives_count,
             "total_repos": len(repos_result),
-            "last_collected": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "last_collected": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "auth_disabled": BORG_AUTH_DISABLED,
+            "allow_shell_hooks": BORG_ALLOW_SHELL_HOOKS
         },
         "repos": repos_result,
         "archives": all_archives,
@@ -804,7 +898,12 @@ async def trigger_refresh(background_tasks: BackgroundTasks):
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "time": datetime.now().isoformat()}
+    return {
+        "status": "ok",
+        "time": datetime.now().isoformat(),
+        "auth_disabled": BORG_AUTH_DISABLED,
+        "allow_shell_hooks": BORG_ALLOW_SHELL_HOOKS
+    }
 
 @app.get("/api/guide")
 async def get_recovery_guide():

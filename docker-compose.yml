@@ -5,6 +5,9 @@ services:
     container_name: borg-dashboard
     restart: unless-stopped
     network_mode: host
+    env_file:
+      - path: .env
+        required: false
     environment:
       - TZ=Europe/Moscow
       - BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK=yes
@@ -13,6 +16,10 @@ services:
       - BORG_REPOS_HOST_PATH=${BORG_REPOS_HOST_PATH:-}
       - BORG_REPO_1_HOST_PATH=${BORG_REPO_1_HOST_PATH:-}
       - BORG_REPO_2_HOST_PATH=${BORG_REPO_2_HOST_PATH:-}
+      - BORG_AUTH_DISABLED=${BORG_AUTH_DISABLED:-false}
+      - BORG_AUTH_USER=${BORG_AUTH_USER:-}
+      - BORG_AUTH_PASSWORD=${BORG_AUTH_PASSWORD:-}
+      - BORG_ALLOW_SHELL_HOOKS=${BORG_ALLOW_SHELL_HOOKS:-false}
       # Опционально: можно переопределить имена и источники
       # - BORG_REPO_1_NAME=Docker & Контейнеры
       # - BORG_REPO_1_SOURCE=/volume1/docker
