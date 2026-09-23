@@ -25,7 +25,7 @@ from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, Query, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -1694,7 +1694,7 @@ class BackupJobSchedule(BaseModel):
     enabled: bool = True
     frequency: str = "daily"  # "daily", "weekly", "manual"
     time: str = "02:00"       # "HH:MM"
-    days: List[int] = [1, 2, 3, 4, 5, 6, 7]  # 1=Mon, 7=Sun
+    days: List[int] = Field(default_factory=lambda: [1, 2, 3, 4, 5, 6, 7])  # 1=Mon, 7=Sun
 
 class BackupJobModel(BaseModel):
     id: Optional[str] = None
@@ -1702,10 +1702,10 @@ class BackupJobModel(BaseModel):
     repo_id: str
     archive_prefix: str
     sources: List[str]
-    exclude_patterns: List[str] = []
+    exclude_patterns: List[str] = Field(default_factory=list)
     compression: str = "auto,zstd,6"
-    retention: BackupJobRetention = BackupJobRetention()
-    schedule: BackupJobSchedule = BackupJobSchedule()
+    retention: BackupJobRetention = Field(default_factory=BackupJobRetention)
+    schedule: BackupJobSchedule = Field(default_factory=BackupJobSchedule)
     pre_backup_cmd: Optional[str] = None
     post_backup_cmd: Optional[str] = None
 
