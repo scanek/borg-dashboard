@@ -982,7 +982,10 @@
       <!-- Footer -->
       <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between shrink-0 text-xs">
         <button onclick="clearTerminal()" class="px-3 py-1 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg transition">Очистить вывод</button>
-        <button onclick="closeActionsModal()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-semibold transition">Закрыть</button>
+        <div class="flex items-center gap-2">
+          <button id="btnCancelAction" onclick="cancelCurrentAction()" class="hidden px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold transition text-xs shadow-sm shadow-rose-500/20"><i class="fa-solid fa-stop mr-1"></i> Прервать</button>
+          <button onclick="closeActionsModal()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl font-semibold transition">Закрыть</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1253,6 +1256,21 @@
         renderCharts(globalData.archives || [], currentChartFilter);
       }
     }
+
+    // CSRF-защита: автоматическое добавление кастомного заголовка во все fetch-запросы
+    const _origFetch = window.fetch;
+    window.fetch = function(url, init = {}) {
+      init = init || {};
+      init.headers = init.headers || {};
+      if (init.headers instanceof Headers) {
+        init.headers.set('X-Dashboard-Request', '1');
+      } else if (Array.isArray(init.headers)) {
+        init.headers.push(['X-Dashboard-Request', '1']);
+      } else {
+        init.headers['X-Dashboard-Request'] = '1';
+      }
+      return _origFetch(url, init);
+    };
 
     function formatBytes(bytes, decimals = 1) {
       if (!bytes || bytes === 0) return '0 Б';
@@ -1643,6 +1661,7 @@
     let currentExplorerRepo = '';
     let currentExplorerArchive = '';
     let currentEventSource = null;
+    let activeRunningTaskId = null;
 
     function switchArchiveViewMode(mode) {
       archiveViewMode = mode;
@@ -2114,7 +2133,7 @@
         return `${yyyy}-${mm}-${dd}` === archiveSelectedDate;
       });
 
-      titleEl.innerHTML = `<i class="fa-regular fa-calendar-check text-emerald-500"></i> Срезы за ${archiveSelectedDate} (${dayArchives.length} архивов)`;
+      titleEl.innerHTML = `<i class="fa-regular fa-calendar-check text-emerald-500"></i> Срезы за ${escapeHtml(archiveSelectedDate)} (${dayArchives.length} архивов)`;
       actionsEl.classList.remove('hidden');
       actionsEl.classList.add('flex');
 
@@ -2202,7 +2221,7 @@
         document.getElementById('explorerCountInfo').innerText = `Всего объектов: ${explorerFiles.length.toLocaleString()}`;
         renderExplorerTable(explorerFiles);
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-12 text-rose-500 font-sans"><i class="fa-solid fa-triangle-exclamation mr-2"></i> Ошибка: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" class="text-center py-12 text-rose-500 font-sans"><i class="fa-solid fa-triangle-exclamation mr-2"></i> Ошибка: ${escapeHtml(err.message)}</td></tr>`;
         document.getElementById('explorerCountInfo').innerText = 'Ошибка';
       }
     }
@@ -2528,6 +2547,39 @@
       body.innerHTML = '<span class="text-slate-500">Консоль очищена.</span>';
       document.getElementById('terminalStatusBadge').className = 'text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400';
       document.getElementById('terminalStatusBadge').innerText = 'Ожидание команды';
+      const btnCancel = document.getElementById('btnCancelAction');
+      if (btnCancel && !activeRunningTaskId) btnCancel.classList.add('hidden');
+    }
+
+    async function cancelCurrentAction() {
+      if (!activeRunningTaskId) return;
+      const btn = document.getElementById('btnCancelAction');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Прерывание...';
+      }
+      try {
+        const res = await fetch(`/api/actions/cancel/${activeRunningTaskId}`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Не удалось прервать задачу');
+        }
+        const body = document.getElementById('terminalBody');
+        if (body) {
+          const div = document.createElement('div');
+          div.className = 'text-amber-400 font-bold leading-relaxed';
+          div.textContent = '> [Dashboard] Отправлен запрос на отмену задачи...';
+          body.appendChild(div);
+          const win = document.getElementById('terminalWindow');
+          if (win) win.scrollTop = win.scrollHeight;
+        }
+      } catch (err) {
+        alert('Ошибка при прерывании: ' + err.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-stop mr-1"></i> Прервать';
+        }
+      }
     }
 
     async function triggerAction(action, repoId = null, archiveName = null) {
@@ -2545,10 +2597,12 @@
       const badge = document.getElementById('terminalStatusBadge');
       const title = document.getElementById('terminalTitle');
       const body = document.getElementById('terminalBody');
+      const btnCancel = document.getElementById('btnCancelAction');
 
       badge.className = 'text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse';
       badge.innerText = 'Запуск...';
       body.innerHTML = `<span class="text-slate-500">> Инициализация задачи [${action}]...</span>\n`;
+      if (btnCancel) btnCancel.classList.add('hidden');
 
       try {
         const res = await fetch('/api/actions/run', {
@@ -2574,6 +2628,12 @@
         }
 
         const taskId = data.task_id;
+        activeRunningTaskId = taskId;
+        if (btnCancel) {
+          btnCancel.disabled = false;
+          btnCancel.innerHTML = '<i class="fa-solid fa-stop mr-1"></i> Прервать';
+          btnCancel.classList.remove('hidden');
+        }
         body.innerHTML = '';
 
         currentEventSource = new EventSource(`/api/actions/stream/${taskId}`);
@@ -2607,12 +2667,16 @@
           }
 
           if (msg.done) {
+            activeRunningTaskId = null;
+            if (btnCancel) btnCancel.classList.add('hidden');
             currentEventSource.close();
             currentEventSource = null;
           }
         };
 
         currentEventSource.onerror = function() {
+          activeRunningTaskId = null;
+          if (btnCancel) btnCancel.classList.add('hidden');
           if (currentEventSource) {
             currentEventSource.close();
             currentEventSource = null;
@@ -2620,9 +2684,11 @@
         };
 
       } catch (err) {
+        activeRunningTaskId = null;
+        if (btnCancel) btnCancel.classList.add('hidden');
         badge.className = 'text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
         badge.innerText = 'Ошибка';
-        body.innerHTML += `<div class="text-rose-400 font-bold">> Ошибка: ${err.message}</div>`;
+        body.innerHTML += `<div class="text-rose-400 font-bold">> Ошибка: ${escapeHtml(err.message)}</div>`;
       }
     }
 
@@ -3059,10 +3125,12 @@
       const badge = document.getElementById('terminalStatusBadge');
       const title = document.getElementById('terminalTitle');
       const body = document.getElementById('terminalBody');
+      const btnCancel = document.getElementById('btnCancelAction');
 
       badge.className = 'text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse';
       badge.innerText = 'Запуск задачи...';
       body.innerHTML = `<span class="text-slate-500">> Инициализация запуска задачи [${jobId}]...</span>\n`;
+      if (btnCancel) btnCancel.classList.add('hidden');
 
       try {
         const res = await fetch(`/api/jobs/${jobId}/run`, { method: 'POST' });
@@ -3072,6 +3140,12 @@
         }
         const data = await res.json();
         const taskId = data.task_id;
+        activeRunningTaskId = taskId;
+        if (btnCancel) {
+          btnCancel.disabled = false;
+          btnCancel.innerHTML = '<i class="fa-solid fa-stop mr-1"></i> Прервать';
+          btnCancel.classList.remove('hidden');
+        }
         body.innerHTML = '';
 
         currentEventSource = new EventSource(`/api/actions/stream/${taskId}`);
@@ -3105,12 +3179,16 @@
           }
 
           if (msg.done) {
+            activeRunningTaskId = null;
+            if (btnCancel) btnCancel.classList.add('hidden');
             currentEventSource.close();
             currentEventSource = null;
           }
         };
 
         currentEventSource.onerror = function() {
+          activeRunningTaskId = null;
+          if (btnCancel) btnCancel.classList.add('hidden');
           if (currentEventSource) {
             currentEventSource.close();
             currentEventSource = null;
@@ -3118,9 +3196,11 @@
         };
 
       } catch (err) {
+        activeRunningTaskId = null;
+        if (btnCancel) btnCancel.classList.add('hidden');
         badge.className = 'text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
         badge.innerText = 'Ошибка';
-        body.innerHTML += `<div class="text-rose-400 font-bold">> Ошибка: ${err.message}</div>`;
+        body.innerHTML += `<div class="text-rose-400 font-bold">> Ошибка: ${escapeHtml(err.message)}</div>`;
       }
     }
 

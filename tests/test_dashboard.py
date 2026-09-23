@@ -8,7 +8,12 @@ from pathlib import Path
 # Add app directory to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
-from main import format_bytes, RepoLock, atomic_save_json, calculate_storage_forecast
+from main import (
+    format_bytes, RepoLock, atomic_save_json, calculate_storage_forecast,
+    hash_password, verify_password, TaskLogBuffer,
+    record_failed_auth, reset_failed_auth, is_auth_rate_limited,
+    _parse_status_log
+)
 
 class TestBorgDashboard(unittest.TestCase):
     def test_format_bytes(self):
@@ -127,6 +132,153 @@ class TestBorgDashboard(unittest.TestCase):
             self.assertEqual(os.environ.get("BORG_TEST_KEY"), "hello_world")
             self.assertEqual(os.environ.get("BORG_AUTH_DISABLED"), "true")
             self.assertEqual(os.environ.get("PORT"), "9999")
+
+    def test_password_hashing_and_verification(self):
+        pw = "SuperSecurePassword123!"
+        pw_hash, salt = hash_password(pw)
+        self.assertTrue(pw_hash)
+        self.assertTrue(salt)
+        self.assertEqual(len(salt), 32)
+        # Correct password verifies
+        self.assertTrue(verify_password(pw, pw_hash, salt))
+        # Wrong password fails
+        self.assertFalse(verify_password("WrongPassword!", pw_hash, salt))
+        self.assertFalse(verify_password("", pw_hash, salt))
+        # Deterministic with same salt
+        hash2, _ = hash_password(pw, salt=salt)
+        self.assertEqual(pw_hash, hash2)
+
+    def test_task_log_buffer_monotonic_seq(self):
+        buf = TaskLogBuffer(maxlen=5)
+        self.assertEqual(len(buf), 0)
+
+        # Append 3 lines
+        buf.append("line 1")
+        buf.append("line 2")
+        buf.append("line 3")
+        self.assertEqual(len(buf), 3)
+
+        # Retrieve all lines from seq 0
+        items = buf.get_lines_since(0)
+        self.assertEqual(len(items), 3)
+        self.assertEqual([seq for seq, _ in items], [1, 2, 3])
+        self.assertEqual([line for _, line in items], ["line 1", "line 2", "line 3"])
+
+        # No new lines since seq 3
+        empty = buf.get_lines_since(3)
+        self.assertEqual(len(empty), 0)
+
+        # Append 5 more lines (total 8 lines, buffer capacity 5)
+        # Ring buffer should drop lines 1, 2, 3 and keep 4, 5, 6, 7, 8
+        buf.append("line 4")
+        buf.append("line 5")
+        buf.append("line 6")
+        buf.append("line 7")
+        buf.append("line 8")
+        self.assertEqual(len(buf), 5)
+
+        # Consumer asking for lines since seq 3 gets 4, 5, 6, 7, 8
+        new_items = buf.get_lines_since(3)
+        self.assertEqual(len(new_items), 5)
+        self.assertEqual([seq for seq, _ in new_items], [4, 5, 6, 7, 8])
+        self.assertEqual([line for _, line in new_items], ["line 4", "line 5", "line 6", "line 7", "line 8"])
+
+        # Late-joining consumer asking from seq 0 gets available 5 lines (4 to 8)
+        late_items = buf.get_lines_since(0)
+        self.assertEqual(len(late_items), 5)
+        self.assertEqual(late_items[0][0], 4)
+        self.assertEqual(late_items[-1][0], 8)
+
+    def test_auth_rate_limiter(self):
+        ip = "192.168.1.99"
+        reset_failed_auth(ip)
+        self.assertFalse(is_auth_rate_limited(ip))
+
+        # Record 4 failed attempts -> still not limited (< 5)
+        for _ in range(4):
+            record_failed_auth(ip)
+        self.assertFalse(is_auth_rate_limited(ip))
+
+        # 5th attempt -> triggers rate limiting
+        record_failed_auth(ip)
+        self.assertTrue(is_auth_rate_limited(ip))
+
+        # Resetting failed auth clears rate limiting
+        reset_failed_auth(ip)
+        self.assertFalse(is_auth_rate_limited(ip))
+
+    def test_parse_status_log_helper(self):
+        import main
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orig_logs_dir = main.LOGS_DIR
+            try:
+                main.LOGS_DIR = Path(tmpdir)
+
+                # Non-existent file
+                res_missing = _parse_status_log("non_existent.log", r"\[(.*?)\]\s+\[SUCCESS\]\s+(.*)", "Success")
+                self.assertEqual(res_missing["status"], "UNKNOWN")
+
+                # File with success
+                log_file = Path(tmpdir) / "test_status.log"
+                log_file.write_text("[2026-09-23 12:00:00] [SUCCESS] All checks passed\n", encoding="utf-8")
+                res_ok = _parse_status_log("test_status.log", r"\[(.*?)\]\s+\[SUCCESS\]\s+(.*)", lambda m: m.group(2))
+                self.assertEqual(res_ok["status"], "SUCCESS")
+                self.assertEqual(res_ok["timestamp"], "2026-09-23 12:00:00")
+                self.assertEqual(res_ok["details"], "All checks passed")
+
+                # File with error
+                log_file.write_text("[2026-09-23 12:10:00] [ERROR] Disk usage above 80%\n", encoding="utf-8")
+                res_err = _parse_status_log("test_status.log", r"\[(.*?)\]\s+\[SUCCESS\]\s+(.*)", "Success")
+                self.assertEqual(res_err["status"], "ERROR")
+                self.assertIn("Disk usage", res_err["details"])
+            finally:
+                main.LOGS_DIR = orig_logs_dir
+
+    def test_csrf_middleware(self):
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+
+        # Cross-site mutation request must be rejected with 403
+        res = client.post("/api/refresh", headers={"Sec-Fetch-Site": "cross-site"})
+        self.assertEqual(res.status_code, 403)
+        self.assertIn("CSRF", res.text)
+
+        # Request with X-Dashboard-Request passes CSRF check
+        res2 = client.post("/api/refresh", headers={"X-Dashboard-Request": "1"})
+        self.assertNotEqual(res2.status_code, 403)
+
+    def test_cancel_action_api(self):
+        from fastapi.testclient import TestClient
+        import threading
+        import main
+        client = TestClient(main.app)
+
+        orig_auth_disabled = main.BORG_AUTH_DISABLED
+        try:
+            main.BORG_AUTH_DISABLED = True
+            # Cancel unknown task returns 404
+            res_404 = client.post("/api/actions/cancel/non-existent-task-id", headers={"X-Dashboard-Request": "1"})
+            self.assertEqual(res_404.status_code, 404)
+
+            # Register mock running task
+            task_id = "test-mock-task-123"
+            main.ACTION_TASKS[task_id] = {
+                "process": None,
+                "status": "running",
+                "lock": threading.Lock(),
+                "lines": main.TaskLogBuffer(),
+                "created_at": 1000.0,
+                "repo_id": None
+            }
+            res_cancel = client.post(f"/api/actions/cancel/{task_id}", headers={"X-Dashboard-Request": "1"})
+            self.assertEqual(res_cancel.status_code, 200)
+            data = res_cancel.json()
+            self.assertEqual(data["status"], "cancelled")
+            self.assertEqual(main.ACTION_TASKS[task_id]["status"], "failed")
+            self.assertEqual(main.ACTION_TASKS[task_id]["exit_code"], -15)
+        finally:
+            main.BORG_AUTH_DISABLED = orig_auth_disabled
 
 if __name__ == "__main__":
     unittest.main()

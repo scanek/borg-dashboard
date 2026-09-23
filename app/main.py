@@ -109,8 +109,48 @@ if not BORG_AUTH_DISABLED and AUTH_FILE.exists():
     except Exception as e:
         print(f"[SECURITY ERROR] Не удалось прочитать {AUTH_FILE}: {e}")
 
+def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
+    """Генерация PBKDF2-HMAC-SHA256 хэша с криптостойкой солью."""
+    if not salt:
+        salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+    return key.hex(), salt
+
+def verify_password(password: str, stored_hash: str, salt: str) -> bool:
+    """Безопасная проверка пароля против сохраненного хэша с защитой от тайминг-атак."""
+    try:
+        key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+        return secrets.compare_digest(key.hex(), stored_hash)
+    except Exception:
+        return False
+
+# -----------------------------------------------------------------------------
+# 🛡️ RATE LIMITING ДЛЯ ЗАЩИТЫ ОТ БРУТФОРСА
+# -----------------------------------------------------------------------------
+AUTH_FAILED_ATTEMPTS: Dict[str, List[float]] = {}
+AUTH_LOCK = threading.Lock()
+
+def record_failed_auth(ip: str):
+    now = time.time()
+    with AUTH_LOCK:
+        attempts = [t for t in AUTH_FAILED_ATTEMPTS.get(ip, []) if now - t < 60]
+        attempts.append(now)
+        AUTH_FAILED_ATTEMPTS[ip] = attempts
+
+def is_auth_rate_limited(ip: str) -> bool:
+    now = time.time()
+    with AUTH_LOCK:
+        attempts = [t for t in AUTH_FAILED_ATTEMPTS.get(ip, []) if now - t < 60]
+        AUTH_FAILED_ATTEMPTS[ip] = attempts
+        return len(attempts) >= 5
+
+def reset_failed_auth(ip: str):
+    with AUTH_LOCK:
+        AUTH_FAILED_ATTEMPTS.pop(ip, None)
+
 ACTIVE_AUTH_USER: Optional[str] = None
-ACTIVE_AUTH_PASSWORD: Optional[str] = None
+ACTIVE_AUTH_HASH: Optional[str] = None
+ACTIVE_AUTH_SALT: Optional[str] = None
 
 if BORG_AUTH_DISABLED:
     print("[SECURITY] BORG_AUTH_DISABLED=true: Встроенная аутентификация отключена администратором.")
@@ -153,26 +193,53 @@ else:
     env_pass = os.getenv("BORG_AUTH_PASSWORD", "").strip()
     if env_user and env_pass:
         ACTIVE_AUTH_USER = env_user
-        ACTIVE_AUTH_PASSWORD = env_pass
+        ACTIVE_AUTH_HASH, ACTIVE_AUTH_SALT = hash_password(env_pass)
     else:
         # Check or generate credentials in data/auth.json
         if AUTH_FILE.exists():
             try:
                 with open(AUTH_FILE, "r", encoding="utf-8") as f:
                     auth_data = json.load(f)
-                    ACTIVE_AUTH_USER = auth_data.get("username", "admin")
-                    ACTIVE_AUTH_PASSWORD = auth_data.get("password", "")
+
+                ACTIVE_AUTH_USER = auth_data.get("username", "admin")
+                stored_hash = auth_data.get("password_hash")
+                stored_salt = auth_data.get("salt")
+                legacy_pass = auth_data.get("password")
+
+                if stored_hash and stored_salt:
+                    ACTIVE_AUTH_HASH = stored_hash
+                    ACTIVE_AUTH_SALT = stored_salt
+                elif legacy_pass:
+                    # Прозрачная миграция открытого пароля в PBKDF2-хэш
+                    ACTIVE_AUTH_HASH, ACTIVE_AUTH_SALT = hash_password(legacy_pass)
+                    auth_data.pop("password", None)
+                    auth_data["password_hash"] = ACTIVE_AUTH_HASH
+                    auth_data["salt"] = ACTIVE_AUTH_SALT
+                    auth_data["migrated_at"] = datetime.now().isoformat()
+                    auth_data["note"] = "Учетные данные защищены PBKDF2-HMAC-SHA256 (пароль в покое захэширован)"
+                    temp_auth = AUTH_FILE.with_suffix(f".tmp_{os.getpid()}")
+                    with open(temp_auth, "w", encoding="utf-8") as f:
+                        json.dump(auth_data, f, indent=2)
+                    os.replace(temp_auth, AUTH_FILE)
+                    try:
+                        if os.name != "nt":
+                            os.chmod(AUTH_FILE, 0o600)
+                    except Exception:
+                        pass
+                    print(f"[SECURITY] Открытый пароль в {AUTH_FILE} автоматически мигрирован в безопасный PBKDF2-хэш.")
             except Exception as e:
                 print(f"[SECURITY ERROR] Не удалось прочитать {AUTH_FILE}: {e}")
 
-        if not ACTIVE_AUTH_USER or not ACTIVE_AUTH_PASSWORD:
+        if not ACTIVE_AUTH_USER or not ACTIVE_AUTH_HASH or not ACTIVE_AUTH_SALT:
             ACTIVE_AUTH_USER = "admin"
-            ACTIVE_AUTH_PASSWORD = secrets.token_urlsafe(16)
+            raw_password = secrets.token_urlsafe(16)
+            ACTIVE_AUTH_HASH, ACTIVE_AUTH_SALT = hash_password(raw_password)
             auth_data = {
                 "username": ACTIVE_AUTH_USER,
-                "password": ACTIVE_AUTH_PASSWORD,
+                "password_hash": ACTIVE_AUTH_HASH,
+                "salt": ACTIVE_AUTH_SALT,
                 "generated_at": datetime.now().isoformat(),
-                "note": "Автоматически сгенерированные учетные данные для BorgBackup Dashboard. Для отключения установите BORG_AUTH_DISABLED=true в .env"
+                "note": "Автоматически сгенерированные учетные данные для BorgBackup Dashboard. Хранятся в виде PBKDF2-хэша."
             }
             try:
                 temp_auth = AUTH_FILE.with_suffix(f".tmp_{os.getpid()}")
@@ -180,7 +247,8 @@ else:
                     json.dump(auth_data, f, indent=2)
                 os.replace(temp_auth, AUTH_FILE)
                 try:
-                    os.chmod(AUTH_FILE, 0o600)
+                    if os.name != "nt":
+                        os.chmod(AUTH_FILE, 0o600)
                 except Exception:
                     pass
             except Exception as e:
@@ -190,8 +258,9 @@ else:
             print("[SECURITY] BORG_AUTH_USER / BORG_AUTH_PASSWORD не заданы в окружении.")
             print("[SECURITY] Для защиты сервера сгенерированы постоянные учетные данные:")
             print(f"       Логин:  {ACTIVE_AUTH_USER}")
-            print(f"       Пароль: {ACTIVE_AUTH_PASSWORD}")
-            print(f"       Файл:   {AUTH_FILE}")
+            print(f"       Пароль: {raw_password}")
+            print(f"       Файл:   {AUTH_FILE} (сохранен в виде безопасного PBKDF2-хэша)")
+            print("[SECURITY] Сохраните этот пароль! В файле auth.json он хранится только в зашифрованном виде.")
             print("[SECURITY] Для отключения установите BORG_AUTH_DISABLED=true в файле .env")
             print("=" * 80)
 
@@ -226,8 +295,31 @@ async def auth_middleware(request: Request, call_next):
     if request.url.path == "/api/health":
         return await call_next(request)
 
-    if BORG_AUTH_DISABLED or not ACTIVE_AUTH_USER or not ACTIVE_AUTH_PASSWORD:
+    client_ip = request.client.host if request.client else "unknown"
+
+    # CSRF защита для мутирующих запросов
+    if request.method in ("POST", "PUT", "DELETE", "PATCH") and request.url.path.startswith("/api/"):
+        sec_fetch_site = request.headers.get("sec-fetch-site")
+        if sec_fetch_site and sec_fetch_site == "cross-site":
+            return Response(status_code=403, content="CSRF: Cross-site requests prohibited")
+
+        origin = request.headers.get("origin")
+        host = request.headers.get("host")
+        if origin and host:
+            origin_netloc = origin.split("://")[-1].rstrip("/")
+            if origin_netloc != host and not host.startswith(origin_netloc):
+                return Response(status_code=403, content="CSRF: Invalid Origin")
+
+    if BORG_AUTH_DISABLED or not ACTIVE_AUTH_USER or not ACTIVE_AUTH_HASH or not ACTIVE_AUTH_SALT:
         return await call_next(request)
+
+    # Защита от перебора паролей (Rate Limiting)
+    if is_auth_rate_limited(client_ip):
+        return Response(
+            status_code=429,
+            content="Слишком много неудачных попыток авторизации. Повторите попытку через минуту.",
+            headers={"Retry-After": "60"}
+        )
 
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Basic "):
@@ -241,14 +333,17 @@ async def auth_middleware(request: Request, call_next):
         decoded = base64.b64decode(encoded).decode("utf-8")
         username, password = decoded.split(":", 1)
         user_ok = secrets.compare_digest(username, ACTIVE_AUTH_USER)
-        pass_ok = secrets.compare_digest(password, ACTIVE_AUTH_PASSWORD)
+        pass_ok = verify_password(password, ACTIVE_AUTH_HASH, ACTIVE_AUTH_SALT)
         if not (user_ok and pass_ok):
+            record_failed_auth(client_ip)
             return Response(
                 status_code=401,
                 content="Неверный логин или пароль",
                 headers={"WWW-Authenticate": 'Basic realm="BorgBackup Dashboard"'}
             )
+        reset_failed_auth(client_ip)
     except Exception:
+        record_failed_auth(client_ip)
         return Response(
             status_code=401,
             content="Неверный формат авторизации",
@@ -456,6 +551,31 @@ CACHE_LOCK = threading.Lock()
 ACTION_TASKS: Dict[str, Dict[str, Any]] = {}
 ACTION_LOCK = threading.Lock()
 
+class TaskLogBuffer:
+    """Кольцевой буфер строк с монотонными ID для надёжного SSE-стриминга без рассинхронизации."""
+    def __init__(self, maxlen: int = 2000, initial_lines: Optional[List[str]] = None):
+        self._deque = deque(maxlen=maxlen)
+        self._seq_counter = 0
+        if initial_lines:
+            for l in initial_lines:
+                self.append(l)
+
+    def append(self, line: str):
+        self._seq_counter += 1
+        self._deque.append((self._seq_counter, line))
+
+    def get_lines_since(self, last_seq: int) -> List[tuple[int, str]]:
+        return [item for item in self._deque if item[0] > last_seq]
+
+    def __iter__(self):
+        return (line for _, line in self._deque)
+
+    def __len__(self):
+        return len(self._deque)
+
+    def __getitem__(self, index):
+        return list(self._deque)[index][1]
+
 def register_action_task(task_id: str, task_info: Dict[str, Any]):
     """Register a new action task, evicting only completed/failed tasks if capacity exceeded.
     Never evicts running tasks to prevent terminating live SSE streams."""
@@ -475,8 +595,8 @@ def register_action_task(task_id: str, task_info: Dict[str, Any]):
 def get_borg_env() -> dict:
     """Build environment variables for safe Borg invocation."""
     env = os.environ.copy()
-    env["BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK"] = "yes"
-    env["BORG_RELOCATED_REPO_ACCESS_IS_OK"] = "yes"
+    env["BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK"] = os.getenv("BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK", "yes")
+    env["BORG_RELOCATED_REPO_ACCESS_IS_OK"] = os.getenv("BORG_RELOCATED_REPO_ACCESS_IS_OK", "yes")
     env["BORG_CACHE_DIR"] = os.getenv("BORG_CACHE_DIR", "/tmp/borg_cache")
     return env
 
@@ -510,120 +630,58 @@ def run_borg_command(args: List[str]) -> Any:
         print(f"Exception running borg {' '.join(args)}: {e}")
         return None
 
+def _parse_status_log(filename: str, success_pattern: str, success_builder: Any, default_details: str = "Лог не найден") -> Dict[str, Any]:
+    log_file = LOGS_DIR / filename
+    res = {"status": "UNKNOWN", "timestamp": None, "details": default_details}
+    if not log_file.exists():
+        return res
+    try:
+        lines = log_file.read_text(encoding="utf-8", errors="ignore").splitlines()[-40:]
+        for line in reversed(lines):
+            m_success = re.search(success_pattern, line)
+            if m_success:
+                details = success_builder(m_success) if callable(success_builder) else success_builder
+                return {
+                    "status": "SUCCESS",
+                    "timestamp": m_success.group(1),
+                    "details": details
+                }
+            m_err = re.search(r"\[(.*?)\]\s+\[ERROR\].*?(.*)", line)
+            if m_err:
+                return {
+                    "status": "ERROR",
+                    "timestamp": m_err.group(1),
+                    "details": m_err.group(2).strip()
+                }
+    except Exception as e:
+        res["details"] = str(e)
+    return res
+
 def parse_log_health() -> Dict[str, Any]:
     """Parse backup log files for health indicators."""
-    health = {
-        "integrity_check": {"status": "UNKNOWN", "timestamp": None, "details": "Лог не найден"},
-        "cloud_sync": {"status": "UNKNOWN", "timestamp": None, "details": "Лог не найден"},
-        "pre_backup": {"status": "UNKNOWN", "timestamp": None, "details": "Лог не найден"},
-        "rsync_cold": {"status": "UNKNOWN", "timestamp": None, "details": "Лог не найден"}
+    return {
+        "integrity_check": _parse_status_log(
+            "check_borg.log",
+            r"\[(.*?)\]\s+\[SUCCESS\].*?(Все репозитории.*|Ошибок не обнаружено.*)",
+            "Все репозитории проверены, ошибок нет (borg check)"
+        ),
+        "cloud_sync": _parse_status_log(
+            "sync_borg_yandex.log",
+            r"\[(.*?)\]\s+\[SUCCESS\].*?(Все репозитории Borg успешно выгружены.*)",
+            "Выгрузка в облачное хранилище успешно завершена"
+        ),
+        "pre_backup": _parse_status_log(
+            "pre_backup_databases.log",
+            r"\[(.*?)\]\s+\[SUCCESS\].*?(Все базы данных и тома успешно подготовлены.*)",
+            "Дампы баз данных и тома успешно подготовлены"
+        ),
+        "rsync_cold": _parse_status_log(
+            "rsync_backup.log",
+            r"\[(.*?)\]\s+\[SUCCESS\].*?Резервное копирование Docker успешно завершено.*Сохранено:\s*(.*)",
+            lambda m: f"Снимок на резервный диск сохранен ({Path(m.group(2).strip()).name}), ротация 2 копии"
+        ),
+        "dr_test": load_dr_test_result()
     }
-
-    # 1. Integrity check log
-    check_log = LOGS_DIR / "check_borg.log"
-    if check_log.exists():
-        try:
-            lines = check_log.read_text(encoding="utf-8", errors="ignore").splitlines()[-40:]
-            for line in reversed(lines):
-                m_success = re.search(r"\[(.*?)\]\s+\[SUCCESS\].*?(Все репозитории.*|Ошибок не обнаружено.*)", line)
-                if m_success:
-                    health["integrity_check"] = {
-                        "status": "SUCCESS",
-                        "timestamp": m_success.group(1),
-                        "details": "Все репозитории проверены, ошибок нет (borg check)"
-                    }
-                    break
-                m_err = re.search(r"\[(.*?)\]\s+\[ERROR\].*?(.*)", line)
-                if m_err:
-                    health["integrity_check"] = {
-                        "status": "ERROR",
-                        "timestamp": m_err.group(1),
-                        "details": m_err.group(2)
-                    }
-                    break
-        except Exception as e:
-            health["integrity_check"]["details"] = str(e)
-
-    # 2. Cloud sync log
-    sync_log = LOGS_DIR / "sync_borg_yandex.log"
-    if sync_log.exists():
-        try:
-            lines = sync_log.read_text(encoding="utf-8", errors="ignore").splitlines()[-40:]
-            for line in reversed(lines):
-                m_success = re.search(r"\[(.*?)\]\s+\[SUCCESS\].*?(Все репозитории Borg успешно выгружены.*)", line)
-                if m_success:
-                    health["cloud_sync"] = {
-                        "status": "SUCCESS",
-                        "timestamp": m_success.group(1),
-                        "details": "Выгрузка в облачное хранилище успешно завершена"
-                    }
-                    break
-                m_err = re.search(r"\[(.*?)\]\s+\[ERROR\].*?(.*)", line)
-                if m_err:
-                    health["cloud_sync"] = {
-                        "status": "ERROR",
-                        "timestamp": m_err.group(1),
-                        "details": m_err.group(2)
-                    }
-                    break
-        except Exception as e:
-            health["cloud_sync"]["details"] = str(e)
-
-    # 3. Pre backup databases log
-    pre_log = LOGS_DIR / "pre_backup_databases.log"
-    if pre_log.exists():
-        try:
-            lines = pre_log.read_text(encoding="utf-8", errors="ignore").splitlines()[-40:]
-            for line in reversed(lines):
-                m_success = re.search(r"\[(.*?)\]\s+\[SUCCESS\].*?(Все базы данных и тома успешно подготовлены.*)", line)
-                if m_success:
-                    health["pre_backup"] = {
-                        "status": "SUCCESS",
-                        "timestamp": m_success.group(1),
-                        "details": "Дампы баз данных и тома успешно подготовлены"
-                    }
-                    break
-                m_err = re.search(r"\[(.*?)\]\s+\[ERROR\].*?(.*)", line)
-                if m_err:
-                    health["pre_backup"] = {
-                        "status": "ERROR",
-                        "timestamp": m_err.group(1),
-                        "details": m_err.group(2)
-                    }
-                    break
-        except Exception as e:
-            health["pre_backup"]["details"] = str(e)
-
-    # 4. Rsync cold backup log
-    rsync_log = LOGS_DIR / "rsync_backup.log"
-    if rsync_log.exists():
-        try:
-            lines = rsync_log.read_text(encoding="utf-8", errors="ignore").splitlines()[-40:]
-            for line in reversed(lines):
-                m_success = re.search(r"\[(.*?)\]\s+\[SUCCESS\].*?Резервное копирование Docker успешно завершено.*Сохранено:\s*(.*)", line)
-                if m_success:
-                    folder = Path(m_success.group(2).strip()).name
-                    health["rsync_cold"] = {
-                        "status": "SUCCESS",
-                        "timestamp": m_success.group(1),
-                        "details": f"Снимок на резервный диск сохранен ({folder}), ротация 2 копии"
-                    }
-                    break
-                m_err = re.search(r"\[(.*?)\]\s+\[ERROR\].*?(.*)", line)
-                if m_err:
-                    health["rsync_cold"] = {
-                        "status": "ERROR",
-                        "timestamp": m_err.group(1),
-                        "details": m_err.group(2)
-                    }
-                    break
-        except Exception as e:
-            health["rsync_cold"]["details"] = str(e)
-
-    # 5. DR Restore Test status
-    health["dr_test"] = load_dr_test_result()
-
-    return health
 
 def calculate_storage_forecast(repos: List[Dict[str, Any]], archives: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Calculate storage consumption runway and capacity forecast."""
@@ -1374,8 +1432,6 @@ async def run_action(req: ActionRequest):
 
     if action == "break_lock":
         repo_lock.force_release()
-        cmd = ["borg", "break-lock", "--", repo_cfg["path"]]
-        title = f"Снятие блокировки ({repo_cfg.get('name')})"
     else:
         if not repo_lock.acquire(task_id, blocking=False):
             raise HTTPException(
@@ -1406,8 +1462,13 @@ async def run_action(req: ActionRequest):
         repo_lock.release(task_id)
         raise HTTPException(status_code=400, detail="Неизвестное действие")
 
+    init_lines = [
+        f"$ {' '.join(cmd)}" if cmd else f"$ borg dr-test {repo_path}::{req.archive_name or 'latest'}",
+        f"--- Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---"
+    ]
     task_info = {
         "id": task_id,
+        "repo_id": req.repo_id,
         "action": action,
         "title": title,
         "command": " ".join(cmd) if cmd else f"DR-тест для {req.archive_name or repo_cfg.get('name')}",
@@ -1415,7 +1476,7 @@ async def run_action(req: ActionRequest):
         "created_at": time.time(),
         "completed_at": None,
         "exit_code": None,
-        "lines": deque([f"$ {' '.join(cmd)}" if cmd else f"$ borg dr-test {repo_path}::{req.archive_name or 'latest'}", f"--- Запуск: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---"], maxlen=2000),
+        "lines": TaskLogBuffer(maxlen=2000, initial_lines=init_lines),
         "lock": threading.Lock()
     }
 
@@ -1439,26 +1500,28 @@ async def run_action(req: ActionRequest):
 
 @app.get("/api/actions/stream/{task_id}")
 async def stream_action(task_id: str, request: Request):
-    """Server-Sent Events (SSE) stream for terminal output."""
+    """Server-Sent Events (SSE) stream for terminal output with reliable sequence numbers."""
     task = ACTION_TASKS.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
     async def event_generator():
-        sent_index = 0
+        sent_seq = 0
         while True:
             if await request.is_disconnected():
                 break
 
             with task["lock"]:
-                current_lines = list(task["lines"])
+                if hasattr(task["lines"], "get_lines_since"):
+                    new_items = task["lines"].get_lines_since(sent_seq)
+                else:
+                    new_items = [(i + 1, l) for i, l in enumerate(task["lines"]) if i + 1 > sent_seq]
                 status = task["status"]
                 exit_code = task["exit_code"]
 
-            while sent_index < len(current_lines):
-                line = current_lines[sent_index]
-                sent_index += 1
-                data = json.dumps({"line": line, "status": status})
+            for seq, line in new_items:
+                sent_seq = seq
+                data = json.dumps({"line": line, "status": status, "seq": seq})
                 yield f"data: {data}\n\n"
 
             if status in ("completed", "failed"):
@@ -1477,6 +1540,38 @@ async def stream_action(task_id: str, request: Request):
             "X-Accel-Buffering": "no"
         }
     )
+
+@app.post("/api/actions/cancel/{task_id}")
+async def cancel_action(task_id: str):
+    """Прервать выполняющуюся задачу (SIGTERM / SIGKILL)."""
+    task = ACTION_TASKS.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    with task["lock"]:
+        if task["status"] in ("completed", "failed"):
+            return {"status": task["status"], "message": "Задача уже завершена"}
+
+        proc = task.get("process")
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+                task["lines"].append("\n[ОТМЕНА] Процесс прерван по запросу пользователя (SIGTERM)")
+            except Exception as e:
+                try:
+                    proc.kill()
+                    task["lines"].append(f"\n[ОТМЕНА] Процесс принудительно остановлен (SIGKILL): {e}")
+                except Exception:
+                    pass
+        task["status"] = "failed"
+        task["exit_code"] = -15
+        task["completed_at"] = time.time()
+
+    repo_id = task.get("repo_id")
+    if repo_id:
+        get_repo_lock(repo_id).force_release()
+
+    return {"status": "cancelled", "task_id": task_id}
 
 @app.get("/api/actions/status/{task_id}")
 async def get_action_status(task_id: str):
@@ -1947,6 +2042,7 @@ def start_job_execution(job_id: str) -> str:
 
     task_info = {
         "id": task_id,
+        "repo_id": repo_id,
         "action": "backup_job",
         "title": title,
         "command": f"borg backup job {job['name']}",
@@ -1954,13 +2050,13 @@ def start_job_execution(job_id: str) -> str:
         "created_at": time.time(),
         "completed_at": None,
         "exit_code": None,
-        "lines": deque([
+        "lines": TaskLogBuffer(maxlen=2000, initial_lines=[
             f"=== Запуск задачи резервного копирования: {job['name']} ===",
             f"Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"Репозиторий: {job['repo_id']}",
             f"Источники: {', '.join(job.get('sources', []))}",
             "============================================================"
-        ], maxlen=2000),
+        ]),
         "lock": threading.Lock()
     }
 
