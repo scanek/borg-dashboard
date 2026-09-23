@@ -2620,10 +2620,17 @@
         title.innerHTML = `<i class="fa-solid fa-terminal mr-1 text-emerald-400"></i>${data.title || action}`;
 
         if (action === 'refresh_cache') {
-          body.innerHTML = `<div class="text-emerald-400">> ${data.message || 'Сбор данных запущен в фоне'}</div><div class="text-slate-400">> Интерфейс обновится через несколько секунд...</div>`;
-          badge.className = 'text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-          badge.innerText = 'Запущено';
-          setTimeout(loadData, 3000);
+          body.innerHTML = `<div class="text-emerald-400">> ${escapeHtml(data.message || 'Сбор актуальных данных запущен в фоне')}</div><div class="text-slate-400 mt-1">> Опрос репозиториев Borg и обновление графиков...</div>`;
+          badge.className = 'text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse';
+          badge.innerText = 'Обновление...';
+          setTimeout(async () => {
+            await loadData();
+            badge.className = 'text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+            badge.innerText = 'Завершено успешно (код 0)';
+            body.innerHTML += `\n<div class="text-emerald-400 font-semibold mt-2">> [Успех] Все метрики и история срезов успешно актуализированы!</div><div class="text-slate-400 text-[11px] mt-1">> Модальное окно можно закрыть.</div>`;
+            const win = document.getElementById('terminalWindow');
+            if (win) win.scrollTop = win.scrollHeight;
+          }, 2000);
           return;
         }
 
